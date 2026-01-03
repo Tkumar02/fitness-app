@@ -1,75 +1,231 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { auth } from '@/firebase';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { signOut } from 'firebase/auth';
+import React, { useContext } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { UserContext } from '../context/UserContext';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+export default function LandingPage() {
+  const { user, setUser } = useContext(UserContext);
+  const router = useRouter();
 
-export default function HomeScreen() {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+      router.replace('/');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <LinearGradient
+      colors={['#3b82f6', '#06b6d4', '#10b981']}
+      style={styles.gradient}
+    >
+      <View style={styles.container}>
+        {/* Header */}
+        <Text style={styles.title}>Welcome to ActiveMe</Text>
+        <Text style={styles.subtitle}>Track your journey, smash your goals 💪</Text>
+
+        <View style={styles.buttonContainer}>
+          {!user ? (
+            <>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => router.push('/(auth)/Login')}
+              >
+                <Text style={styles.buttonText}>Log In</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.button, styles.secondaryButton]}
+                onPress={() => router.push('/(auth)/Signup')}
+              >
+                <Text style={styles.buttonText}>Sign Up</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => router.push('/homepage')}
+              >
+                <Text style={styles.buttonText}>Continue to Home</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.button, styles.logoutButton]}
+                onPress={handleLogout}
+              >
+                <Text style={styles.buttonText}>Logout</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  gradient: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    padding: 20,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  title: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 10,
+    textAlign: 'center',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  subtitle: {
+    fontSize: 16,
+    color: '#e0f2fe',
+    marginBottom: 50,
+    textAlign: 'center',
+  },
+  buttonContainer: {
+    width: '100%',
+    maxWidth: 300,
+  },
+  button: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingVertical: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  secondaryButton: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  logoutButton: {
+    backgroundColor: 'rgba(239,68,68,0.8)',
+    borderColor: 'rgba(239,68,68,0.9)',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
+
+
+// import { auth, db } from '@/firebase';
+// import { useRouter } from 'expo-router';
+// import { onAuthStateChanged } from 'firebase/auth';
+// import { doc, getDoc } from 'firebase/firestore';
+// import React, { useContext, useEffect, useState } from 'react';
+// import { ActivityIndicator, Button, StyleSheet, Text, View } from 'react-native';
+// import { UserContext } from '../context/UserContext';
+
+// export default function LandingPage() {
+//   const router = useRouter();
+//   const { user, setUser } = useContext(UserContext);
+//   const [loading, setLoading] = useState(true);
+
+//   useEffect(() => {
+//     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+//       if (firebaseUser) {
+//         try {
+//           // Check if profile exists in Firestore
+//           const docRef = doc(db, 'users', firebaseUser.uid);
+//           const docSnap = await getDoc(docRef);
+
+//           if (docSnap.exists()) {
+//             const userData = { uid: firebaseUser.uid, email: firebaseUser.email, ...docSnap.data() };
+//             setUser(userData);
+//             router.replace('/homepage'); // ✅ go to homepage
+//           } else {
+//             // If profile does not exist, send them to profile setup
+//             router.replace('/(auth)/Profile');
+//           }
+//         } catch (err) {
+//           console.error('Error checking user profile:', err);
+//         }
+//       }
+//       setLoading(false);
+//     });
+
+//     return unsubscribe;
+//   }, []);
+
+//   if (loading) {
+//     return (
+//       <View style={styles.center}>
+//         <ActivityIndicator size="large" />
+//       </View>
+//     );
+//   }
+
+//   return (
+//     <View style={styles.center}>
+//       <Text style={styles.title}>Welcome to Fitness App</Text>
+//       <Button title="Login" onPress={() => router.push('/(auth)/Login')} />
+//       <Button title="Sign Up" onPress={() => router.push('/(auth)/Signup')} />
+//     </View>
+//   );
+// }
+
+// const styles = StyleSheet.create({
+//   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+//   title: { fontSize: 24, marginBottom: 20, fontWeight: 'bold' },
+// });
+
+
+
+// // app/(tabs)/index.tsx
+// import { useRouter } from 'expo-router';
+// import React, { useContext } from 'react';
+// import { Button, StyleSheet, Text, View } from 'react-native';
+// import LogoutButton from '../(auth)/Logout';
+// import { UserContext } from '../context/UserContext';
+
+// export default function LandingPage() {
+//   const { user } = useContext(UserContext);
+//   const router = useRouter();
+
+//   return (
+//     <View style={styles.container}>
+//       <Text style={styles.title}>Welcome to the Landing Page!</Text>
+
+//       {user ? (
+//         <>
+//           <Text style={styles.subtitle}>You are logged in.</Text>
+//           <LogoutButton />
+//         </>
+//       ) : (
+//         <>
+//           <Text style={styles.subtitle}>Please log in or sign up.</Text>
+//           <Button title="Login" onPress={() => router.push('/(auth)/Login')} />
+//           <View style={{ height: 10 }} />
+//           <Button title="Sign Up" onPress={() => router.push('/(auth)/Signup')} />
+//         </>
+//       )}
+
+//       <View style={{ height: 20 }} />
+//       {/* Always visible button to go to homepage */}
+//       <Button
+//         title="See Home Page"
+//         onPress={() => router.push('/homepage')}
+//         color="#10b981"
+//       />
+//     </View>
+//   );
+// }
+
+// const styles = StyleSheet.create({
+//   container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+//   title: { fontSize: 28, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+//   subtitle: { fontSize: 16, marginBottom: 20, textAlign: 'center' },
+// });
