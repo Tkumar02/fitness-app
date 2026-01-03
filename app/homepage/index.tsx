@@ -85,7 +85,7 @@ export default function HomePage() {
                     <Button title="Add Workout" onPress={() => router.push('/AddWorkout')} />
                 </View>
                 <View style={styles.buttonContainer}>
-                    <Button title="Review Progression" onPress={() => console.log('Navigate to Progression')} />
+                    <Button title="Review Progression" onPress={() => router.push('/ReviewWorkout')} />
                 </View>
 
                 {/* Calendar */}
