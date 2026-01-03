@@ -2,7 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+//import 'react-native-reanimated';
 import { UserProvider } from './context/UserContext'; // <-- make sure path is correct
 
 import { useColorScheme } from '@/hooks/useColorScheme';
