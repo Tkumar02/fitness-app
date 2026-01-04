@@ -1,3 +1,4 @@
+//index page in tabs folder
 import { auth } from '@/firebase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
