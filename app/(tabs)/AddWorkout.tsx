@@ -1,6 +1,6 @@
 import { db } from '@/firebase';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, setDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useContext, useEffect, useState } from 'react';
 import {
     Alert,
@@ -93,42 +93,91 @@ export default function AddWorkoutScreen() {
         setter(cleaned);
     };
 
-    const handleSave = async () => {
-        const finalActivity = isAddingNew ? newName.trim() : activity;
-        if (!user?.uid || !type || !finalActivity) {
-            Alert.alert("Error", "Please fill in all required fields");
-            return;
-        }
-        try {
-            await addDoc(collection(db, 'workouts'), {
-                userId: user.uid,
-                date: date.toISOString().split('T')[0],
-                category: type,
-                activity: finalActivity,
-                focusArea: type === 'strength' ? focusArea : null,
-                sets: Number(sets) || 0,
-                reps: Number(reps) || 0,
-                weight: Number(weight) || 0,
-                weightUnit: type === 'strength' ? weightUnit : null,
-                duration: Number(duration) || 0,
-                durationUnit: type === 'cardio' ? durationUnit : null,
-                distance: type === 'cardio' && trackDistance ? Number(distance) : 0,
-                loggedAt: serverTimestamp(),
-            });
+const handleSave = async () => {
+    const finalActivity = isAddingNew ? newName.trim() : activity;
 
-            if (isAddingNew) {
-                await setDoc(doc(db, 'users', user.uid, 'customEquipment', finalActivity), {
-                    name: finalActivity,
-                    category: type,
-                    createdAt: serverTimestamp()
-                });
+    if (!user?.uid || !type || !finalActivity) {
+        Alert.alert("Error", "Please fill in all required fields");
+        return;
+    }
+
+    try {
+        // 1. FETCH CURRENT GOALS FOR COMPARISON
+        const goalRef = doc(db, 'users', user.uid, 'settings', 'goals');
+        const goalSnap = await getDoc(goalRef);
+        let isGoalMet = false;
+
+        if (goalSnap.exists()) {
+            const g = goalSnap.data();
+            const targetAct = String(g.activity || '').toLowerCase().trim();
+            const currentAct = finalActivity.toLowerCase().trim();
+
+            // Only check goals if the activity matches
+            if (targetAct === currentAct) {
+                const wDist = Number(distance) || 0;
+                const wTime = Number(duration) || 0;
+                const gDist = Number(g.distGoal) || 0;
+                const gTime = Number(g.timeGoal) || 0;
+
+                // Check if workout exceeds distance OR duration goals
+                const distMet = gDist > 0 && wDist >= gDist;
+                const timeMet = gTime > 0 && wTime >= gTime;
+
+                if (distMet || timeMet) {
+                    isGoalMet = true;
+                }
             }
+        }
 
+        // 2. LOG THE WORKOUT WITH THE 'goalMet' TAG
+        await addDoc(collection(db, 'workouts'), {
+            userId: user.uid,
+            date: date.toISOString().split('T')[0],
+            category: type,
+            activity: finalActivity,
+            focusArea: type === 'strength' ? focusArea : null,
+            sets: Number(sets) || 0,
+            reps: Number(reps) || 0,
+            weight: Number(weight) || 0,
+            weightUnit: type === 'strength' ? weightUnit : null,
+            duration: Number(duration) || 0,
+            durationUnit: type === 'cardio' ? durationUnit : null,
+            distance: type === 'cardio' && trackDistance ? Number(distance) : 0,
+            goalMet: isGoalMet, // This "stamps" the achievement forever
+            loggedAt: serverTimestamp(),
+        });
+
+        // 3. UPDATE CUSTOM LIBRARY
+        if (isAddingNew) {
+            await setDoc(doc(db, 'users', user.uid, 'customEquipment', finalActivity), {
+                name: finalActivity,
+                category: type,
+                createdAt: serverTimestamp()
+            });
+        }
+
+        // Feedback and Reset
+        if (isGoalMet) {
+            Alert.alert("GOAL MET! 🏆", `Incredible work! You hit your goal for ${finalActivity}.`);
+        } else {
             Alert.alert("Success", "Workout logged!");
-            setActivity(''); setFocusArea(''); setNewName(''); setIsAddingNew(false);
-            setSets(''); setReps(''); setWeight(''); setDuration(''); setDistance('');
-        } catch (e) { Alert.alert("Error", "Save failed"); }
-    };
+        }
+
+        setActivity(''); 
+        setFocusArea(''); 
+        setNewName(''); 
+        setIsAddingNew(false);
+        setSets(''); 
+        setReps(''); 
+        setWeight(''); 
+        setDuration(''); 
+        setDistance('');
+
+    } catch (e) {
+        console.error("Save Error:", e);
+        Alert.alert("Error", "Save failed. Please check your connection.");
+    }
+};
 
     const openPicker = (title: string, options: string[], onSelect: (v: string) => void, isFocus: boolean = false) => {
         setPickerData({ title, options, onSelect, isFocus });
