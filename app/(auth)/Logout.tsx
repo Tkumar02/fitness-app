@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useContext } from 'react';
 import { Button } from 'react-native';
-import { UserContext } from '../context/UserContext';
+import { UserContext } from '../../context/UserContext';
 
 export default function LogoutButton() {
     const { setUser } = useContext(UserContext);

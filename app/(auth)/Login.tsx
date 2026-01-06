@@ -6,7 +6,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import React, { useContext, useState } from 'react';
 import { Button, StyleSheet, Text, TextInput, View } from 'react-native';
-import { UserContext } from '../context/UserContext';
+import { UserContext } from '../../context/UserContext';
 
 export default function LoginScreen() {
     const router = useRouter();

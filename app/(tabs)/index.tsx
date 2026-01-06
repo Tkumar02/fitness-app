@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import React, { useContext } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { UserContext } from '../context/UserContext';
+import { UserContext } from '../../context/UserContext';
 
 export default function LandingPage() {
   const { user, setUser } = useContext(UserContext);

@@ -13,7 +13,7 @@ import {
     useColorScheme,
     View
 } from 'react-native';
-import { UserContext } from '../context/UserContext';
+import { UserContext } from '../../context/UserContext';
 
 export default function ReviewProgression() {
     const { user } = useContext(UserContext);
@@ -116,16 +116,16 @@ export default function ReviewProgression() {
     };
 
     const renderWorkoutItem = ({ item }: { item: any }) => {
-        const achievement = checkAchievement(item);
+        const isTrophy = item.goalMet === true;
 
         return (
             <View style={[styles.card, { backgroundColor: theme.card }]}>
                 <View style={styles.cardHeader}>
                     <Text style={styles.dateText}>{item.date}</Text>
                     <View style={styles.headerRight}>
-                        {achievement && (
+                        {isTrophy && (
                             <View style={[styles.achievementBadge, { backgroundColor: theme.goldBg, borderColor: theme.gold }]}>
-                                <Text style={styles.achievementText}>{achievement.icon} {achievement.label}</Text>
+                                <Text style={styles.achievementText}>🏆 Goal Met</Text>
                             </View>
                         )}
                         <Text style={[styles.badge, { 

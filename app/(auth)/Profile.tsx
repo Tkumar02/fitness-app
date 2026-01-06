@@ -14,7 +14,7 @@ import {
     View,
     useColorScheme
 } from 'react-native';
-import { UserContext } from '../context/UserContext';
+import { UserContext } from '../../context/UserContext';
 
 export default function ProfilePage() {
     const { user } = useContext(UserContext);

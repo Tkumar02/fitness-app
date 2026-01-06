@@ -5,7 +5,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import React, { useContext, useState } from 'react';
 // 1. Keep imports simple
 import { Button, StyleSheet, Text, TextInput, View, useColorScheme } from 'react-native';
-import { UserContext } from '../context/UserContext';
+import { UserContext } from '../../context/UserContext';
 
 export default function SignupScreen() {
     const router = useRouter();
