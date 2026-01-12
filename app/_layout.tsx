@@ -1,5 +1,4 @@
-//layout page in homepage folder
-
+//layout page in app folder
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';

@@ -117,6 +117,29 @@ export default function AddWorkoutPage() {
         ...customList.filter(i => i.category === workoutType).map(i => i.name)
     ];
 
+    const handleAddCustom = () => {
+    Alert.prompt(
+        "New Exercise",
+        `Add a custom ${workoutType} exercise:`,
+        [
+            { text: "Cancel", style: "cancel" },
+            { 
+                text: "Add", 
+                onPress: async (name:any) => {
+                    if (name && user?.uid) {
+                        await addDoc(collection(db, 'users', user.uid, 'customEquipment'), {
+                            name: name,
+                            category: workoutType,
+                            createdAt: serverTimestamp()
+                        });
+                        setActivity(name); // Auto-select it
+                        setPickerVisible(false);
+                    }
+                } 
+            }
+        ]);
+    };
+
     const inputBg = isDark ? '#2c2c2e' : '#f2f2f7';
     const textColor = isDark ? '#fff' : '#000';
     const cardBg = isDark ? '#1c1c1e' : '#fff';

@@ -1,3 +1,4 @@
+//_layout.tsx in tabs folder
 import { Ionicons } from '@expo/vector-icons'; // Standard Expo icons
 import { Tabs } from 'expo-router';
 
@@ -17,7 +18,7 @@ export default function TabsLayout() {
       <Tabs.Screen 
         name="AddWorkout" 
         options={{ 
-          title: 'Add', 
+          title: 'Log Workout', 
           tabBarIcon: ({ color }) => <Ionicons name="add-circle" size={24} color={color} /> 
         }} 
       />
