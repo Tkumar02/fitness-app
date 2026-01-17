@@ -25,6 +25,7 @@ import {
     useColorScheme,
     View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserContext } from '../../context/UserContext';
 
 export default function AddWorkoutPage() {
@@ -155,6 +156,7 @@ export default function AddWorkoutPage() {
     };
 
     return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#121212' : '#f9fafb' }} edges={['top']}>
         <ScrollView contentContainerStyle={styles.container} style={{backgroundColor: isDark ? '#121212' : '#f9fafb'}}>
             
             <TouchableOpacity style={[styles.dateBtn, {backgroundColor: theme.cardBg}]} onPress={() => setShowDatePicker(true)}>
@@ -262,6 +264,7 @@ export default function AddWorkoutPage() {
                 </View>
             </Modal>
         </ScrollView>
+        </SafeAreaView>
     );
 }
 

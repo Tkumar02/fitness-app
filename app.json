@@ -2,7 +2,7 @@
   "expo": {
     "name": "fitness-app",
     "slug": "fitness-app",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "fitnessapp",
@@ -44,6 +44,12 @@
       "eas": {
         "projectId": "89b227be-2343-4ee6-8d54-ad00f4fffd7c"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/89b227be-2343-4ee6-8d54-ad00f4fffd7c"
     }
   }
 }

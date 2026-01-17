@@ -1,0 +1,2 @@
+ eas build -p android --profile preview --clear-cache
+ eas update --channel preview --message "Fixed small JSX change"      
