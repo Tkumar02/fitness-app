@@ -13,6 +13,7 @@ import {
     Alert, KeyboardAvoidingView, Modal, Platform, ScrollView,
     StyleSheet, Text, TextInput, TouchableOpacity, useColorScheme, View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserContext } from '../../context/UserContext';
 
 export default function GoalsPage() {
@@ -131,6 +132,7 @@ export default function GoalsPage() {
     const cardBg = isDark ? '#1c1c1e' : '#fff';
 
     return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#121212' : '#f9fafb' }} edges={['top']}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <ScrollView contentContainerStyle={styles.container}>
                 
@@ -241,6 +243,7 @@ export default function GoalsPage() {
                 </View>
             </Modal>
         </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
 
