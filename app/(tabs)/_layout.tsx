@@ -16,13 +16,6 @@ export default function TabsLayout() {
         }} 
       />
       <Tabs.Screen 
-        name="AddWorkout" 
-        options={{ 
-          title: 'Log Workout', 
-          tabBarIcon: ({ color }) => <Ionicons name="add-circle" size={24} color={color} /> 
-        }} 
-      />
-      <Tabs.Screen 
         name="Goals" 
         options={{ 
           title: 'Goals', 
@@ -30,10 +23,24 @@ export default function TabsLayout() {
         }} 
       />
       <Tabs.Screen 
+        name="AddWorkout" 
+        options={{ 
+          title: 'Log Workout', 
+          tabBarIcon: ({ color }) => <Ionicons name="add-circle" size={24} color={color} /> 
+        }} 
+      />
+      <Tabs.Screen 
         name="ReviewWorkout" 
         options={{ 
           title: 'Stats', 
           tabBarIcon: ({ color }) => <Ionicons name="stats-chart" size={24} color={color} /> 
+        }} 
+      />
+      <Tabs.Screen 
+        name="ProgressionCharts" 
+        options={{ 
+          title: 'Analytics', 
+          tabBarIcon: ({ color }) => <Ionicons name="trending-up-outline" size={24} color={color} /> 
         }} 
       />
     </Tabs>
