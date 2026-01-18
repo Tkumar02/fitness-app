@@ -33,41 +33,34 @@ export default function ProgressionCharts() {
         card: isDark ? '#1c1c1e' : '#ffffff',
         text: isDark ? '#ffffff' : '#000000',
         subtext: '#8e8e93',
-        accent: '#007AFF',
+        accent: '#007AFF', // Blue for 1RM
+        volume: '#34C759', // Green for Volume
         intensity: '#FF9500' 
     };
 
     useEffect(() => {
         if (!user?.uid) return;
-        
-        // This query ensures we only get workouts that ACTUALLY exist
         const q = query(
             collection(db, 'workouts'), 
             where('userId', '==', user.uid), 
             orderBy('date', 'asc')
         );
-
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(d => d.data());
             setWorkouts(data);
-            
-            // Set initial activity to the most recent one if not set
             if (data.length > 0 && !selectedActivity) {
                 setSelectedActivity(data[data.length - 1].activity);
             }
             setLoading(false);
         });
-
         return () => unsubscribe();
     }, [user]);
 
-    // ONLY show exercises that have been completed
     const uniqueActivities = useMemo(() => {
         const completed = workouts.map(w => w.activity);
         return Array.from(new Set(completed)).sort();
     }, [workouts]);
 
-    // Filter Variations based on the selected Activity
     const variations = useMemo(() => {
         const filtered = workouts.filter(w => w.activity === selectedActivity);
         const vals = filtered.map(w => {
@@ -80,7 +73,6 @@ export default function ProgressionCharts() {
 
     const processedCharts = useMemo(() => {
         let filtered = workouts.filter(w => w.activity === selectedActivity);
-        
         if (selectedVariation !== 'All') {
             filtered = filtered.filter(w => {
                 const val = w.category === 'strength' ? `${w.weight}kg` : (Number(w.distance) > 0 ? `${w.distance}km` : `${w.duration}min`);
@@ -92,20 +84,44 @@ export default function ProgressionCharts() {
         if (lastSix.length === 0) return null;
 
         const labels = lastSix.map(d => d.date.split('-').slice(1).join('/'));
-        const sample = lastSix[lastSix.length - 1];
-        
-        const performanceData = lastSix.map(d => 
-            d.category === 'strength' ? Number(d.weight) : (Number(d.distance) > 0 ? Number(d.distance) : Number(d.duration))
+        const isStrength = lastSix[0].category === 'strength';
+
+        // STRENGTH MATH: 1RM and Volume
+        const rmData = lastSix.map(d => 
+            d.category === 'strength' ? Math.round(Number(d.weight) * (1 + (Number(d.reps) || 0) / 30)) : Number(d.distance || d.duration)
         );
-        const performanceUnit = sample.category === 'strength' ? 'kg' : (Number(sample.distance) > 0 ? 'km' : 'min');
+
+        const volumeData = lastSix.map(d => 
+            d.category === 'strength' ? (Number(d.weight) * (Number(d.reps) || 0) * (Number(d.sets) || 0)) : 0
+        );
+
         const intensityData = lastSix.map(d => Number(d.intensity) || 0);
+
+        // Chart Data for Progress Trend
+        const datasets = [
+            { 
+                data: rmData, 
+                color: (opacity = 1) => theme.accent, 
+                strokeWidth: 3 
+            }
+        ];
+
+        // Add Volume line only for strength
+        if (isStrength) {
+            datasets.push({
+                data: volumeData,
+                color: (opacity = 1) => theme.volume,
+                strokeWidth: 2,
+            });
+        }
 
         return {
             labels,
-            performance: {
+            isStrength,
+            progress: {
                 labels,
-                datasets: [{ data: performanceData, color: (opacity = 1) => theme.accent, strokeWidth: 3 }],
-                legend: [`Load/Dist (${performanceUnit})`]
+                datasets: datasets,
+                legend: isStrength ? ["Est. 1RM (kg)", "Total Volume (kg)"] : ["Performance"]
             },
             intensity: {
                 labels,
@@ -121,10 +137,7 @@ export default function ProgressionCharts() {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
-            <ScrollView 
-                contentContainerStyle={styles.container}
-                showsVerticalScrollIndicator={false}
-            >
+            <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
                 <Text style={[styles.header, { color: theme.text }]}>Analytics</Text>
 
                 <View style={styles.filterRow}>
@@ -132,9 +145,8 @@ export default function ProgressionCharts() {
                         <Text style={styles.filterLabel}>Activity</Text>
                         <Text style={[styles.filterValue, { color: theme.accent }]} numberOfLines={1}>{selectedActivity || 'None'}</Text>
                     </TouchableOpacity>
-
                     <TouchableOpacity style={[styles.filterBtn, { backgroundColor: theme.card }]} onPress={() => setVariationModalVisible(true)}>
-                        <Text style={styles.filterLabel}>Goal/Weight</Text>
+                        <Text style={styles.filterLabel}>Select Metric</Text>
                         <Text style={[styles.filterValue, { color: theme.accent }]}>{selectedVariation}</Text>
                     </TouchableOpacity>
                 </View>
@@ -142,14 +154,25 @@ export default function ProgressionCharts() {
                 {processedCharts ? (
                     <View>
                         <View style={[styles.chartCard, { backgroundColor: theme.card }]}>
-                            <Text style={[styles.chartTitle, { color: theme.text }]}>Progress Trend</Text>
+                            <View style={styles.chartHeader}>
+                                <Text style={[styles.chartTitle, { color: theme.text }]}>Progress Trend</Text>
+                                {processedCharts.isStrength && (
+                                    <View style={styles.legendContainer}>
+                                        <View style={[styles.dot, { backgroundColor: theme.accent }]} /><Text style={styles.legendText}>1RM</Text>
+                                        <View style={[styles.dot, { backgroundColor: theme.volume, marginLeft: 10 }]} /><Text style={styles.legendText}>Vol</Text>
+                                    </View>
+                                )}
+                            </View>
+                            
                             <LineChart 
-                                data={processedCharts.performance} 
+                                data={processedCharts.progress} 
                                 width={screenWidth - 60} 
-                                height={200} 
-                                chartConfig={getChartConfig(isDark, theme.accent)} 
+                                height={220} 
+                                chartConfig={getChartConfig(isDark, theme.accent, true)} 
                                 bezier 
-                                style={styles.chart} 
+                                style={styles.chart}
+                                fromZero={true}
+                                formatYLabel={(value) => Number(value) >= 1000 ? `${(Number(value)/1000).toFixed(1)}k` : value}
                             />
                         </View>
 
@@ -159,52 +182,38 @@ export default function ProgressionCharts() {
                                 data={processedCharts.intensity} 
                                 width={screenWidth - 60} 
                                 height={200} 
-                                chartConfig={getChartConfig(isDark, theme.intensity)} 
+                                chartConfig={getChartConfig(isDark, theme.intensity, false)} 
                                 bezier 
                                 style={styles.chart} 
+                                fromZero={true}
                             />
                         </View>
                     </View>
                 ) : (
                     <View style={styles.emptyState}>
                         <Ionicons name="analytics" size={80} color={theme.subtext} />
-                        <Text style={[styles.emptyText, { color: theme.subtext }]}>
-                            No data for this variation yet.
-                        </Text>
+                        <Text style={[styles.emptyText, { color: theme.subtext }]}>No data for this variation.</Text>
                     </View>
                 )}
 
-                <SelectionModal 
-                    visible={activityModalVisible} 
-                    title="Your Exercises" 
-                    data={uniqueActivities} 
-                    selected={selectedActivity} 
-                    onSelect={(val:any) => { setSelectedActivity(val); setSelectedVariation('All'); setActivityModalVisible(false); }} 
-                    theme={theme} 
-                    onClose={() => setActivityModalVisible(false)} 
-                />
-                
-                <SelectionModal 
-                    visible={variationModalVisible} 
-                    title="Select Variation" 
-                    data={variations} 
-                    selected={selectedVariation} 
-                    onSelect={(val:any) => { setSelectedVariation(val); setVariationModalVisible(false); }} 
-                    theme={theme} 
-                    onClose={() => setVariationModalVisible(false)} 
-                />
+                <SelectionModal visible={activityModalVisible} title="Your Exercises" data={uniqueActivities} selected={selectedActivity} onSelect={(val:any) => { setSelectedActivity(val); setSelectedVariation('All'); setActivityModalVisible(false); }} theme={theme} onClose={() => setActivityModalVisible(false)} />
+                <SelectionModal visible={variationModalVisible} title="Select Variation" data={variations} selected={selectedVariation} onSelect={(val:any) => { setSelectedVariation(val); setVariationModalVisible(false); }} theme={theme} onClose={() => setVariationModalVisible(false)} />
             </ScrollView>
         </SafeAreaView>
     );
 }
 
-const getChartConfig = (isDark: boolean, color: string) => ({
+const getChartConfig = (isDark: boolean, mainColor: string, isMulti: boolean) => ({
     backgroundGradientFrom: isDark ? '#1c1c1e' : '#fff',
     backgroundGradientTo: isDark ? '#1c1c1e' : '#fff',
     decimalPlaces: 0,
-    color: (opacity = 1) => color,
+    // Use mainColor as the default, but individual dataset colors will override for the lines
+    color: (opacity = 1) => isMulti ? `rgba(142, 142, 147, ${opacity})` : mainColor,
     labelColor: (opacity = 1) => isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
-    propsForDots: { r: "4", strokeWidth: "2", stroke: color }
+    propsForDots: { r: "4", strokeWidth: "2" },
+    fillShadowGradientFrom: mainColor,
+    fillShadowGradientTo: isDark ? '#1c1c1e' : '#fff',
+    fillShadowGradientOpacity: 0.1,
 });
 
 function SelectionModal({ visible, title, data, selected, onSelect, theme, onClose }: any) {
@@ -237,8 +246,12 @@ const styles = StyleSheet.create({
     filterLabel: { fontSize: 10, color: '#8e8e93', textTransform: 'uppercase', fontWeight: '800' },
     filterValue: { fontSize: 15, fontWeight: '700', marginTop: 4 },
     chartCard: { borderRadius: 24, padding: 15, elevation: 4 },
-    chartTitle: { fontSize: 17, fontWeight: '800', marginBottom: 12, marginLeft: 5 },
-    chart: { borderRadius: 16 },
+    chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    chartTitle: { fontSize: 17, fontWeight: '800', marginLeft: 5 },
+    legendContainer: { flexDirection: 'row', alignItems: 'center' },
+    legendText: { fontSize: 10, fontWeight: 'bold', color: '#8e8e93', marginLeft: 4 },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    chart: { borderRadius: 16, marginTop: 10 },
     emptyState: { alignItems: 'center', marginTop: 80 },
     emptyText: { fontSize: 16, marginTop: 15, fontWeight: '600' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
