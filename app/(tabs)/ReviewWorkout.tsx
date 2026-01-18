@@ -1,16 +1,20 @@
 import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { LinearGradient } from 'expo-linear-gradient';
+import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import React, { useContext, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
     FlatList,
     Modal,
+    Platform,
     RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     useColorScheme,
     View
@@ -31,6 +35,87 @@ export default function ReviewProgression() {
     const [categoryFilter, setCategoryFilter] = useState<'all' | 'strength' | 'cardio'>('all');
     const [selectedActivity, setSelectedActivity] = useState<string>('All Exercises');
     const [activityPickerVisible, setActivityPickerVisible] = useState(false);
+
+    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+
+    const [editingWorkout, setEditingWorkout] = useState<any>(null); // Stores the workout being edited
+const [editModalVisible, setEditModalVisible] = useState(false);
+
+// Temporary state for the edit form fields
+const [editSets, setEditSets] = useState('');
+const [editReps, setEditReps] = useState('');
+const [editWeight, setEditWeight] = useState('');
+const [editDuration, setEditDuration] = useState('');
+const [editDistance, setEditDistance] = useState('');
+const [editDate, setEditDate] = useState(new Date());
+const [showEditDatePicker, setShowEditDatePicker] = useState(false);
+
+const startEdit = (workout: any) => {
+    setEditingWorkout(workout);
+    
+    // Convert string "YYYY-MM-DD" to a Date object safely for the picker
+    if (workout.date) {
+        const [year, month, day] = workout.date.split('-').map(Number);
+        setEditDate(new Date(year, month - 1, day)); 
+    } else {
+        setEditDate(new Date());
+    }
+
+    setEditSets(workout.sets?.toString() || '');
+    setEditReps(workout.reps?.toString() || '');
+    setEditWeight(workout.weight?.toString() || '');
+    setEditDuration(workout.duration?.toString() || '');
+    setEditDistance(workout.distance?.toString() || '');
+    setEditModalVisible(true);
+};
+
+const handleUpdate = async () => {
+    if (!editingWorkout || !userGoals) return;
+
+    try {
+        const workoutRef = doc(db, 'workouts', editingWorkout.id);
+        
+        // --- NEW: Prepare the Date String ---
+        const dateString = editDate.toISOString().split('T')[0];
+        
+        // 1. Prepare the updated values (YOUR ORIGINAL LOGIC)
+        const updatedSets = Number(editSets) || 0;
+        const updatedReps = Number(editReps) || 0;
+        const updatedWeight = Number(editWeight) || 0;
+        const updatedDuration = Number(editDuration) || 0;
+        const updatedDistance = Number(editDistance) || 0;
+
+        // 2. Recalculate if Goal is still met (YOUR ORIGINAL LOGIC)
+        let stillGoalMet = false;
+        if (editingWorkout.category === 'strength') {
+            stillGoalMet = updatedWeight >= (userGoals.strengthWeight || 0);
+        } else {
+            stillGoalMet = updatedDuration >= (userGoals.cardioDuration || 0);
+        }
+
+        // 3. Update Firestore (NOW INCLUDING DATE)
+        await updateDoc(workoutRef, {
+            date: dateString, // <--- ADDED THIS
+            sets: updatedSets,
+            reps: updatedReps,
+            weight: updatedWeight,
+            duration: updatedDuration,
+            distance: updatedDistance,
+            goalMet: stillGoalMet, 
+            updatedAt: serverTimestamp(),
+        });
+
+        // 4. Close Modal
+        setEditModalVisible(false);
+        setEditingWorkout(null);
+        
+    } catch (error) {
+        // YOUR ORIGINAL ERROR HANDLING
+        if (Platform.OS === 'web') alert("Update failed");
+        else Alert.alert("Error", "Could not update workout.");
+    }
+};
 
     const theme = {
         background: isDark ? '#121212' : '#f9fafb',
@@ -60,7 +145,7 @@ export default function ReviewProgression() {
         const q = query(
             collection(db, 'workouts'),
             where('userId', '==', user.uid),
-            orderBy('loggedAt', 'desc') 
+            orderBy('date', 'desc') 
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -87,9 +172,36 @@ export default function ReviewProgression() {
     };
 
     const handleDelete = async (workoutId: string) => {
-        try { await deleteDoc(doc(db, 'workouts', workoutId)); } 
-        catch (error) { Alert.alert("Error", "Could not delete."); }
+    const performDelete = async () => {
+        try {
+            await deleteDoc(doc(db, 'workouts', workoutId));
+        } catch (error) {
+            console.error("Delete error:", error);
+            // Use basic alert for web, native Alert for mobile
+            if (Platform.OS === 'web') {
+                alert("Could not delete.");
+            } else {
+                Alert.alert("Error", "Could not delete.");
+            }
+        }
     };
+
+    // Platform-specific confirmation
+    if (Platform.OS === 'web') {
+        if (window.confirm("Are you sure you want to delete this workout?")) {
+            performDelete();
+        }
+    } else {
+        Alert.alert(
+            "Delete Workout",
+            "Are you sure?",
+            [
+                { text: "Cancel", style: "cancel" },
+                { text: "Delete", style: "destructive", onPress: performDelete }
+            ]
+        );
+    }
+};
 
     const renderWorkoutItem = ({ item }: { item: any }) => {
         // PRESERVED: Goal Met Logic
@@ -114,6 +226,10 @@ export default function ReviewProgression() {
                                 </Text>
                             </View>
                         )}
+
+                        <TouchableOpacity onPress={() => startEdit(item)} style={[styles.deleteBtn, { marginRight: 10 }]}>
+        <Ionicons name="create-outline" size={20} color={theme.accent} />
+    </TouchableOpacity>
                         
                         <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteBtn}>
                             <Ionicons name="trash-outline" size={18} color={theme.subtext} />
@@ -143,20 +259,39 @@ export default function ReviewProgression() {
         );
     };
 
-    const filteredWorkouts = workouts.filter(w => {
-        const matchesCategory = categoryFilter === 'all' || w.category === categoryFilter;
-        const matchesActivity = selectedActivity === 'All Exercises' || w.activity === selectedActivity;
-        return matchesCategory && matchesActivity;
-    });
+const filteredWorkouts = workouts.filter(w => {
+    const matchesCategory = categoryFilter === 'all' || w.category === categoryFilter;
+    const matchesActivity = selectedActivity === 'All Exercises' || w.activity === selectedActivity;
+    
+    // Updated Date Logic
+    if (!selectedDate) {
+        return matchesCategory && matchesActivity; // Show all dates
+    }
+
+    const workoutDate = w.date; 
+    const filterDate = selectedDate.toISOString().split('T')[0];
+    const matchesDate = workoutDate === filterDate;
+
+    return matchesCategory && matchesActivity && matchesDate;
+});
 
     if (loading) return <View style={[styles.center, {backgroundColor: theme.background}]}><ActivityIndicator size="large" color={theme.accent}/></View>;
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#121212' : '#f9fafb' }} edges={['top']}>
-        <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={{ flex: 1 }}>
+        <LinearGradient
+            // Colors: A deep navy to a dark slate (looks great with your dark theme)
+            colors={isDark 
+        ? ['#893636ff', '#1c1c1e', '#2c3e50'] // Dark: Charcoal to Deep Navy
+        : ['#3e9aa4ff', '#CFDEF3']            // Light: Soft Sky Blue to Powder Blue
+    }
+            style={StyleSheet.absoluteFill}
+        />
+        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <View style={[styles.container]}>
             <Text style={[styles.header, { color: theme.text }]}>Progression</Text>
 
-            <View style={[styles.toggleContainer, { backgroundColor: isDark ? '#2c2c2e' : '#e5e5ea' }]}>
+            <View style={[styles.toggleContainer]}>
                 {(['all', 'strength', 'cardio'] as const).map((t) => (
                     <TouchableOpacity 
                         key={t}
@@ -167,6 +302,76 @@ export default function ReviewProgression() {
                     </TouchableOpacity>
                 ))}
             </View>
+
+<View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+    <TouchableOpacity 
+        style={[styles.dropdownTrigger, { flex: 1, marginBottom: 0, backgroundColor: theme.card }]} 
+        onPress={() => setShowDatePicker(true)}
+    >
+        <Text style={{color: theme.text, fontWeight: '700'}}>
+            {selectedDate 
+                ? `📅 ${selectedDate.toLocaleDateString()}` 
+                : "📅 All Dates"}
+        </Text>
+        <Ionicons name="calendar" size={18} color={theme.accent} />
+    </TouchableOpacity>
+
+    {/* The "Clear" Button - only show if a date is selected */}
+    {selectedDate && (
+        <TouchableOpacity 
+            style={[styles.dropdownTrigger, { paddingHorizontal: 15, marginBottom: 0, backgroundColor: theme.card }]}
+            onPress={() => setSelectedDate(null)} 
+        >
+            <Ionicons name="close-circle" size={18} color={theme.danger} />
+        </TouchableOpacity>
+    )}
+</View>
+
+{showDatePicker && (
+    Platform.OS === 'web' ? (
+        // WEB VERSION: Using native HTML5 date input
+        <View style={[styles.card, { marginTop: 10, padding: 10 }]}>
+            <Text style={{ color: theme.text, marginBottom: 8 }}>Pick a Date:</Text>
+            <input 
+                type="date" 
+                // Convert Date object to YYYY-MM-DD for the input
+                value={selectedDate ? selectedDate.toISOString().split('T')[0] : ''}
+                onChange={(e) => {
+                    const newDate = e.target.value ? new Date(e.target.value) : null;
+                    setSelectedDate(newDate);
+                    setShowDatePicker(false);
+                }}
+                style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    border: `1px solid ${theme.accent}`,
+                    backgroundColor: theme.card,
+                    color: theme.text,
+                    fontSize: '16px',
+                    width: '100%'
+                }}
+            />
+            <TouchableOpacity 
+                onPress={() => setShowDatePicker(false)}
+                style={{ marginTop: 10, alignItems: 'center' }}
+            >
+                <Text style={{ color: theme.danger }}>Cancel</Text>
+            </TouchableOpacity>
+        </View>
+    ) : (
+        // MOBILE VERSION: Using the library you installed
+        <DateTimePicker
+            value={selectedDate || new Date()}
+            mode="date"
+            display="default"
+            onChange={(event, date?: Date) => {
+                setShowDatePicker(false);
+                if (date) setSelectedDate(date);
+            }}
+        />
+    )
+)}
+            
 
             <TouchableOpacity 
                 style={[styles.dropdownTrigger, {backgroundColor: theme.card}]} 
@@ -205,8 +410,67 @@ export default function ReviewProgression() {
                     </View>
                 </View>
             </Modal>
+
+<Modal visible={editModalVisible} transparent animationType="slide">
+    <View style={styles.modalOverlay}>
+        <View style={[styles.modalSheet, { backgroundColor: theme.card }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Workout</Text>
+            
+            <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={styles.inputLabel}>Workout Date</Text>
+                <TouchableOpacity 
+                    style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }]} 
+                    onPress={() => setShowEditDatePicker(true)}
+                >
+                    <Text style={{ color: theme.text }}>{editDate.toLocaleDateString()}</Text>
+                    <Ionicons name="calendar-outline" size={20} color={theme.accent} />
+                </TouchableOpacity>
+
+                {editingWorkout?.category === 'strength' ? (
+                    <>
+                        <Text style={styles.inputLabel}>Sets</Text>
+                        <TextInput style={[styles.input, { color: theme.text }]} value={editSets} onChangeText={setEditSets} keyboardType="numeric" />
+                        <Text style={styles.inputLabel}>Reps</Text>
+                        <TextInput style={[styles.input, { color: theme.text }]} value={editReps} onChangeText={setEditReps} keyboardType="numeric" />
+                        <Text style={styles.inputLabel}>Weight (kg)</Text>
+                        <TextInput style={[styles.input, { color: theme.text }]} value={editWeight} onChangeText={setEditWeight} keyboardType="numeric" />
+                    </>
+                ) : (
+                    <>
+                        <Text style={styles.inputLabel}>Duration (min)</Text>
+                        <TextInput style={[styles.input, { color: theme.text }]} value={editDuration} onChangeText={setEditDuration} keyboardType="numeric" />
+                        <Text style={styles.inputLabel}>Distance (km)</Text>
+                        <TextInput style={[styles.input, { color: theme.text }]} value={editDistance} onChangeText={setEditDistance} keyboardType="numeric" />
+                    </>
+                )}
+
+                <TouchableOpacity style={[styles.saveButton, { backgroundColor: theme.accent }]} onPress={handleUpdate}>
+                    <Text style={styles.saveButtonText}>Save Changes</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setEditModalVisible(false)} style={{ padding: 15 }}>
+                    <Text style={{ textAlign: 'center', color: theme.danger }}>Cancel</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        </View>
+    </View>
+
+    {showEditDatePicker && (
+        <DateTimePicker
+            value={editDate}
+            mode="date"
+            display="default"
+            onChange={(event, date) => {
+                setShowEditDatePicker(false);
+                if (date) setEditDate(date);
+            }}
+        />
+    )}
+</Modal>
+
         </View>
     </SafeAreaView>
+    </View>
     );
 }
 
@@ -234,8 +498,6 @@ const styles = StyleSheet.create({
     statLabel: { fontSize: 9, color: '#8e8e93', textTransform: 'uppercase', fontWeight: '800', marginBottom: 2 },
     statValue: { fontWeight: '900', fontSize: 16 },
     emptyText: { textAlign: 'center', color: '#8e8e93', marginTop: 40 },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    modalSheet: { borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 20, maxHeight: '60%' },
     modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15, textAlign: 'center' },
     modalItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: 0.5, borderBottomColor: '#333' },
     modalItemText: { fontSize: 16 },
@@ -250,5 +512,50 @@ const styles = StyleSheet.create({
         fontSize: 11, 
         fontWeight: 'bold', 
         color: '#DAA520' 
+    },
+    // EDIT MODAL STYLES
+    inputLabel: { 
+        fontSize: 12, 
+        fontWeight: '800', 
+        color: '#8e8e93', 
+        marginTop: 15, 
+        marginBottom: 5, 
+        textTransform: 'uppercase',
+        letterSpacing: 1
+    },
+    input: { 
+    padding: 15, 
+    borderRadius: 12, 
+    fontSize: 16,
+    borderWidth: 1,
+    },
+    saveButton: { 
+        padding: 18, 
+        borderRadius: 16, 
+        marginTop: 30, 
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 5,
+        elevation: 5
+    },
+    saveButtonText: { 
+        color: '#fff', 
+        fontWeight: '900', 
+        fontSize: 16, 
+        textTransform: 'uppercase' 
+    },
+    // Ensure modalOverlay and modalSheet are defined correctly
+    modalOverlay: { 
+        flex: 1, 
+        backgroundColor: 'rgba(0,0,0,0.6)', // Dim the background
+        justifyContent: 'flex-end' 
+    },
+    modalSheet: { 
+        borderTopLeftRadius: 30, 
+        borderTopRightRadius: 30, 
+        padding: 25, 
+        paddingBottom: Platform.OS === 'ios' ? 40 : 25, // Extra space for iPhone home bar
     },
 });

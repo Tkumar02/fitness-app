@@ -1,2 +1,8 @@
  eas build -p android --profile preview --clear-cache
  eas update --channel preview --message "Fixed small JSX change"      
+
+ npx expo export -p web
+ firebase deploy --only hosting
+
+
+ firebase login:use email-for-this-project@gmail.com
