@@ -1,6 +1,7 @@
 import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useNavigation } from '@react-navigation/native';
 import {
     addDoc,
     collection,
@@ -29,6 +30,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserContext } from '../../context/UserContext';
 
 export default function AddWorkoutPage() {
+    const navigation = useNavigation<any>();
     const { user } = useContext(UserContext);
     const isDark = useColorScheme() === 'dark';
 
@@ -137,6 +139,7 @@ export default function AddWorkoutPage() {
             setDistance(''); setDuration(''); setWeight(''); setSets(''); setReps('');
             setActivity('');
             Alert.alert("Success", "Workout logged!");
+            navigation.navigate('ReviewWorkout');
         } catch (e) {
             Alert.alert("Error", "Save failed.");
         }

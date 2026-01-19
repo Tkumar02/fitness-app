@@ -27,6 +27,9 @@ export default function ProgressionCharts() {
     const [selectedVariation, setSelectedVariation] = useState<string>('All');
     const [activityModalVisible, setActivityModalVisible] = useState(false);
     const [variationModalVisible, setVariationModalVisible] = useState(false);
+    
+    // NEW: View Mode for Strength
+    const [viewMode, setViewMode] = useState<'1RM' | 'Volume'>('1RM');
 
     const theme = {
         background: isDark ? '#121212' : '#f9fafb',
@@ -86,42 +89,41 @@ export default function ProgressionCharts() {
         const labels = lastSix.map(d => d.date.split('-').slice(1).join('/'));
         const isStrength = lastSix[0].category === 'strength';
 
-        // STRENGTH MATH: 1RM and Volume
-        const rmData = lastSix.map(d => 
-            d.category === 'strength' ? Math.round(Number(d.weight) * (1 + (Number(d.reps) || 0) / 30)) : Number(d.distance || d.duration)
-        );
+        // 1RM Calculation (Brzycki Formula)
+        const rmData = lastSix.map(d => {
+            if (d.category === 'strength') {
+                const w = parseFloat(d.weight) || 0;
+                const r = parseInt(d.reps) || 0;
+                return r > 1 ? Math.round(w * (1 + r / 30)) : w;
+            }
+            // For cardio, return distance (primary metric) or duration
+            return Number(d.distance) > 0 ? Number(d.distance) : Number(d.duration);
+        });
 
-        const volumeData = lastSix.map(d => 
-            d.category === 'strength' ? (Number(d.weight) * (Number(d.reps) || 0) * (Number(d.sets) || 0)) : 0
-        );
+        // Volume Calculation
+        const volumeData = lastSix.map(d => {
+            if (d.category === 'strength') {
+                const w = parseFloat(d.weight) || 0;
+                const r = parseInt(d.reps) || 0;
+                const s = parseInt(d.sets) || 0;
+                return w * r * s;
+            }
+            return 0;
+        });
 
         const intensityData = lastSix.map(d => Number(d.intensity) || 0);
 
-        // Chart Data for Progress Trend
-        const datasets = [
-            { 
-                data: rmData, 
-                color: (opacity = 1) => theme.accent, 
-                strokeWidth: 3 
-            }
-        ];
-
-        // Add Volume line only for strength
-        if (isStrength) {
-            datasets.push({
-                data: volumeData,
-                color: (opacity = 1) => theme.volume,
-                strokeWidth: 2,
-            });
-        }
+        // Determine which line to show in Strength mode
+        const activeProgressData = (isStrength && viewMode === 'Volume') ? volumeData : rmData;
+        const activeColor = (isStrength && viewMode === 'Volume') ? theme.volume : theme.accent;
 
         return {
             labels,
             isStrength,
             progress: {
                 labels,
-                datasets: datasets,
-                legend: isStrength ? ["Est. 1RM (kg)", "Total Volume (kg)"] : ["Performance"]
+                datasets: [{ data: activeProgressData, color: (opacity = 1) => activeColor, strokeWidth: 4 }],
+                legend: isStrength ? [(viewMode === '1RM' ? "Est. 1RM (kg)" : "Total Volume (kg)")] : ["Performance"]
             },
             intensity: {
                 labels,
@@ -129,7 +131,7 @@ export default function ProgressionCharts() {
                 legend: ["Intensity (RPE)"]
             }
         };
-    }, [selectedActivity, selectedVariation, workouts, isDark]);
+    }, [selectedActivity, selectedVariation, workouts, viewMode, isDark]);
 
     if (loading) {
         return <View style={[styles.center, {backgroundColor: theme.background}]}><ActivityIndicator size="large" color={theme.accent}/></View>;
@@ -146,7 +148,7 @@ export default function ProgressionCharts() {
                         <Text style={[styles.filterValue, { color: theme.accent }]} numberOfLines={1}>{selectedActivity || 'None'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.filterBtn, { backgroundColor: theme.card }]} onPress={() => setVariationModalVisible(true)}>
-                        <Text style={styles.filterLabel}>Select Metric</Text>
+                        <Text style={styles.filterLabel}>Variation</Text>
                         <Text style={[styles.filterValue, { color: theme.accent }]}>{selectedVariation}</Text>
                     </TouchableOpacity>
                 </View>
@@ -156,23 +158,33 @@ export default function ProgressionCharts() {
                         <View style={[styles.chartCard, { backgroundColor: theme.card }]}>
                             <View style={styles.chartHeader}>
                                 <Text style={[styles.chartTitle, { color: theme.text }]}>Progress Trend</Text>
+                                
                                 {processedCharts.isStrength && (
-                                    <View style={styles.legendContainer}>
-                                        <View style={[styles.dot, { backgroundColor: theme.accent }]} /><Text style={styles.legendText}>1RM</Text>
-                                        <View style={[styles.dot, { backgroundColor: theme.volume, marginLeft: 10 }]} /><Text style={styles.legendText}>Vol</Text>
+                                    <View style={styles.toggleContainer}>
+                                        <TouchableOpacity 
+                                            style={[styles.miniToggle, viewMode === '1RM' && { backgroundColor: theme.accent }]}
+                                            onPress={() => setViewMode('1RM')}
+                                        >
+                                            <Text style={[styles.miniToggleText, viewMode === '1RM' && { color: '#fff' }]}>1RM</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity 
+                                            style={[styles.miniToggle, viewMode === 'Volume' && { backgroundColor: theme.volume }]}
+                                            onPress={() => setViewMode('Volume')}
+                                        >
+                                            <Text style={[styles.miniToggleText, viewMode === 'Volume' && { color: '#fff' }]}>VOL</Text>
+                                        </TouchableOpacity>
                                     </View>
                                 )}
                             </View>
-                            
+
                             <LineChart 
                                 data={processedCharts.progress} 
                                 width={screenWidth - 60} 
                                 height={220} 
-                                chartConfig={getChartConfig(isDark, theme.accent, true)} 
+                                chartConfig={getChartConfig(isDark, (processedCharts.isStrength && viewMode === 'Volume') ? theme.volume : theme.accent)} 
                                 bezier 
-                                style={styles.chart}
-                                fromZero={true}
-                                formatYLabel={(value) => Number(value) >= 1000 ? `${(Number(value)/1000).toFixed(1)}k` : value}
+                                fromZero={false} // Crucial: Zooms in to see smaller RM changes
+                                style={styles.chart} 
                             />
                         </View>
 
@@ -182,17 +194,17 @@ export default function ProgressionCharts() {
                                 data={processedCharts.intensity} 
                                 width={screenWidth - 60} 
                                 height={200} 
-                                chartConfig={getChartConfig(isDark, theme.intensity, false)} 
+                                chartConfig={getChartConfig(isDark, theme.intensity)} 
                                 bezier 
-                                style={styles.chart} 
                                 fromZero={true}
+                                style={styles.chart} 
                             />
                         </View>
                     </View>
                 ) : (
                     <View style={styles.emptyState}>
                         <Ionicons name="analytics" size={80} color={theme.subtext} />
-                        <Text style={[styles.emptyText, { color: theme.subtext }]}>No data for this variation.</Text>
+                        <Text style={[styles.emptyText, { color: theme.subtext }]}>No data for this selection.</Text>
                     </View>
                 )}
 
@@ -203,17 +215,15 @@ export default function ProgressionCharts() {
     );
 }
 
-const getChartConfig = (isDark: boolean, mainColor: string, isMulti: boolean) => ({
+const getChartConfig = (isDark: boolean, color: string) => ({
     backgroundGradientFrom: isDark ? '#1c1c1e' : '#fff',
     backgroundGradientTo: isDark ? '#1c1c1e' : '#fff',
     decimalPlaces: 0,
-    // Use mainColor as the default, but individual dataset colors will override for the lines
-    color: (opacity = 1) => isMulti ? `rgba(142, 142, 147, ${opacity})` : mainColor,
-    labelColor: (opacity = 1) => isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
-    propsForDots: { r: "4", strokeWidth: "2" },
-    fillShadowGradientFrom: mainColor,
-    fillShadowGradientTo: isDark ? '#1c1c1e' : '#fff',
-    fillShadowGradientOpacity: 0.1,
+    color: (opacity = 1) => color,
+    labelColor: (opacity = 1) => isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+    propsForDots: { r: "5", strokeWidth: "2", stroke: color },
+    fillShadowGradientFrom: color,
+    fillShadowGradientOpacity: 0.2,
 });
 
 function SelectionModal({ visible, title, data, selected, onSelect, theme, onClose }: any) {
@@ -245,13 +255,13 @@ const styles = StyleSheet.create({
     filterBtn: { flex: 1, padding: 15, borderRadius: 18, elevation: 3 },
     filterLabel: { fontSize: 10, color: '#8e8e93', textTransform: 'uppercase', fontWeight: '800' },
     filterValue: { fontSize: 15, fontWeight: '700', marginTop: 4 },
-    chartCard: { borderRadius: 24, padding: 15, elevation: 4 },
-    chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    chartTitle: { fontSize: 17, fontWeight: '800', marginLeft: 5 },
-    legendContainer: { flexDirection: 'row', alignItems: 'center' },
-    legendText: { fontSize: 10, fontWeight: 'bold', color: '#8e8e93', marginLeft: 4 },
-    dot: { width: 8, height: 8, borderRadius: 4 },
-    chart: { borderRadius: 16, marginTop: 10 },
+    chartCard: { borderRadius: 24, padding: 16, elevation: 4 },
+    chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+    chartTitle: { fontSize: 18, fontWeight: '800' },
+    toggleContainer: { flexDirection: 'row', backgroundColor: 'rgba(142,142,147,0.1)', borderRadius: 10, padding: 3 },
+    miniToggle: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+    miniToggleText: { fontSize: 10, fontWeight: '900', color: '#8e8e93' },
+    chart: { borderRadius: 16, marginTop: 10, marginLeft: -15 },
     emptyState: { alignItems: 'center', marginTop: 80 },
     emptyText: { fontSize: 16, marginTop: 15, fontWeight: '600' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
