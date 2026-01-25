@@ -10,6 +10,7 @@ import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert, FlatList, Modal, Platform,
     RefreshControl, ScrollView, StyleSheet, Text,
+    TextInput,
     TouchableOpacity, useColorScheme, View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,11 +21,10 @@ export default function ReviewProgression() {
     const isDark = useColorScheme() === 'dark';
     const webDateRef = useRef<any>(null); 
     
-    // States
+    // Core States
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [workouts, setWorkouts] = useState<any[]>([]);
-    const [activeGoals, setActiveGoals] = useState<any[]>([]);
     const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
     
     // Filter States
@@ -42,8 +42,8 @@ export default function ReviewProgression() {
     const [editWeight, setEditWeight] = useState('');
     const [editDuration, setEditDuration] = useState('');
     const [editDistance, setEditDistance] = useState('');
-    const [editDate, setEditDate] = useState(new Date());
     const [editIntensity, setEditIntensity] = useState('');
+    const [editNotes, setEditNotes] = useState('');
 
     const theme = {
         background: isDark ? '#121212' : '#f9fafb',
@@ -52,43 +52,28 @@ export default function ReviewProgression() {
         subtext: '#8e8e93',
         accent: '#007AFF',
         success: '#34C759',
-        gold: '#FFD700',
-        danger: '#FF3B30',
-        noteBg: isDark ? '#2c2c2e' : '#f2f2f7'
+        inputBg: isDark ? '#2c2c2e' : '#f2f2f7'
+    };
+
+    const getRPEColor = (rpe: number) => {
+        if (rpe <= 6) return '#34C759'; 
+        if (rpe <= 8) return '#FF9500';
+        return '#FF3B30';
     };
 
     // 1. Sync Data
     useEffect(() => {
         if (!user?.uid) return;
-        const unsubGoals = onSnapshot(collection(db, 'users', user.uid, 'activeGoals'), (snap) => {
-            setActiveGoals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
         const q = query(collection(db, 'workouts'), where('userId', '==', user.uid), orderBy('date', 'desc'));
-        const unsubWorkouts = onSnapshot(q, (snapshot) => {
+        const unsub = onSnapshot(q, (snapshot) => {
             setWorkouts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setLoading(false);
             setRefreshing(false);
         });
-        return () => { unsubGoals(); unsubWorkouts(); };
+        return () => unsub();
     }, [user]);
 
-    // 2. Logic & Helpers
-    const calculate1RM = (w: string, r: string) => {
-        const weight = Number(w) || 0;
-        const reps = Number(r) || 0;
-        return reps === 1 ? weight : Math.round(weight * (1 + reps / 30));
-    };
-
-    const getRPEColor = (rpe: number) => {
-        if (rpe <= 6) return '#34C759';
-        if (rpe <= 8) return '#FF9500';
-        return '#FF3B30';
-    };
-
-    const toggleNote = (id: string) => {
-        setExpandedNotes(prev => ({ ...prev, [id]: !prev[id] }));
-    };
-
+    // 2. Logic & Filters
     const filteredWorkouts = useMemo(() => {
         return workouts.filter(w => {
             const matchesCat = categoryFilter === 'all' || w.category === categoryFilter;
@@ -104,27 +89,30 @@ export default function ReviewProgression() {
 
     // 3. Handlers
     const handleDateTrigger = () => {
-        if (Platform.OS === 'web') webDateRef.current?.showPicker();
-        else setShowDatePicker(true);
+        if (Platform.OS === 'web') {
+            webDateRef.current?.showPicker();
+        } else {
+            setShowDatePicker(true);
+        }
     };
 
-    const handleUpdate = async () => {
-        if (!editingWorkout) return;
-        try {
-            const dateString = editDate.toISOString().split('T')[0];
-            await updateDoc(doc(db, 'workouts', editingWorkout.id), {
-                date: dateString,
-                sets: Number(editSets) || 0,
-                reps: Number(editReps) || 0,
-                weight: Number(editWeight) || 0,
-                duration: Number(editDuration) || 0,
-                distance: Number(editDistance) || 0,
-                intensity: Number(editIntensity) || 0,
-                updatedAt: serverTimestamp()
-            });
-            setEditModalVisible(false);
-        } catch (e) { alert("Update failed"); }
-    };
+const handleUpdate = async () => {
+    if (!editingWorkout) return;
+    try {
+        await updateDoc(doc(db, 'workouts', editingWorkout.id), {
+            sets: Number(editSets) || 0,
+            reps: Number(editReps) || 0,
+            // If it's a BW exercise, we treat the weight input as "addedWeight"
+            weight: editingWorkout.isBW ? 0 : (Number(editWeight) || 0),
+            addedWeight: editingWorkout.isBW ? (Number(editWeight) || 0) : 0,
+            notes: editNotes,
+            updatedAt: serverTimestamp()
+        });
+        setEditModalVisible(false);
+    } catch (e) { 
+        Alert.alert("Error", "Update failed"); 
+    }
+};
 
     const handleDelete = async (id: string) => {
         const performDelete = async () => await deleteDoc(doc(db, 'workouts', id));
@@ -134,31 +122,38 @@ export default function ReviewProgression() {
 
     // 4. Render Item
     const renderWorkoutItem = ({ item }: { item: any }) => {
-        const c1RM = item.category === 'strength' ? calculate1RM(item.weight, item.reps) : 0;
-        const cVol = (Number(item.weight) * Number(item.reps) * Number(item.sets)) || 0;
+
         const isNoteExpanded = expandedNotes[item.id];
+        const rpeValue = item.intensity || item.rpe;
+        // Use 'weight' for normal lifts, 'addedWeight' for Bodyweight exercises
+        const effectiveWeight = item.isBW ? (Number(item.addedWeight) || 0) : (Number(item.weight) || 0);
+    
+        // Calculate 1RM and Volume based on the effective weight
+        const c1RM = effectiveWeight > 0 ? Math.round(effectiveWeight * (1 + Number(item.reps) / 30)) : 0;
+        const totalVolume = (Number(item.sets) * Number(item.reps) * effectiveWeight) || 0;
 
         return (
             <View style={[styles.card, { backgroundColor: theme.card }]}>
                 <View style={styles.cardHeader}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <Text style={styles.dateText}>{item.date}</Text>
-                        {item.intensity && (
-                            <View style={[styles.rpeBadge, { backgroundColor: getRPEColor(Number(item.intensity)) + '20' }]}>
-                                <Text style={[styles.rpeBadgeText, { color: getRPEColor(Number(item.intensity)) }]}>RPE {item.intensity}</Text>
+                        {!!rpeValue && (
+                            <View style={[styles.rpeBadge, { backgroundColor: getRPEColor(Number(rpeValue)) + '20' }]}>
+                                <Text style={[styles.rpeBadgeText, { color: getRPEColor(Number(rpeValue)) }]}>RPE {rpeValue}</Text>
                             </View>
                         )}
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        {/* 🏆 GOAL MET ACCURACY check */}
-                        {item.goalMet && <Text style={{marginRight: 10, fontSize: 16}}>🏆</Text>}
-                        
+                        {item.goalMet ? <Text style={{marginRight: 12}}>🏆</Text> : null}
                         <TouchableOpacity onPress={() => {
                             setEditingWorkout(item);
                             setEditSets(item.sets?.toString() || '');
                             setEditReps(item.reps?.toString() || '');
                             setEditWeight(item.weight?.toString() || '');
-                            setEditDate(new Date(item.date));
+                            setEditDuration(item.duration?.toString() || '');
+                            setEditDistance(item.distance?.toString() || '');
+                            setEditIntensity(rpeValue?.toString() || '');
+                            setEditNotes(item.notes || ''); 
                             setEditModalVisible(true);
                         }}><Ionicons name="create-outline" size={20} color={theme.accent} style={{marginRight: 15}} /></TouchableOpacity>
                         <TouchableOpacity onPress={() => handleDelete(item.id)}><Ionicons name="trash-outline" size={18} color={theme.subtext} /></TouchableOpacity>
@@ -170,11 +165,28 @@ export default function ReviewProgression() {
                 <View style={styles.statsRow}>
                     {item.category === 'strength' ? (
                         <>
-                            <View><Text style={styles.statLabel}>Sets</Text><Text style={[styles.statValue, {color: theme.text}]}>{item.sets}</Text></View>
-                            <View><Text style={styles.statLabel}>Reps</Text><Text style={[styles.statValue, {color: theme.text}]}>{item.reps}</Text></View>
-                            <View><Text style={styles.statLabel}>Weight</Text><Text style={[styles.statValue, {color: theme.accent}]}>{item.weight}kg</Text></View>
-                        </>
+        <View>
+            <Text style={styles.statLabel}>Sets</Text>
+            <Text style={[styles.statValue, {color: theme.text}]}>{item.sets}</Text>
+        </View>
+        <View>
+            <Text style={styles.statLabel}>Reps</Text>
+            <Text style={[styles.statValue, {color: theme.text}]}>{item.reps}</Text>
+        </View>
+        <View>
+            <Text style={styles.statLabel}>Weight</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[styles.statValue, {color: theme.accent}]}>
+                    {item.isBW ? (
+                        item.addedWeight > 0 ? `BW + ${item.addedWeight}kg` : 'BW'
                     ) : (
+                        `${item.weight}kg`
+                    )}
+                </Text>
+            </View>
+        </View>
+    </>
+) : (
                         <>
                             <View><Text style={styles.statLabel}>Min</Text><Text style={[styles.statValue, {color: theme.success}]}>{item.duration}</Text></View>
                             <View><Text style={styles.statLabel}>Km</Text><Text style={[styles.statValue, {color: theme.success}]}>{item.distance}</Text></View>
@@ -183,27 +195,39 @@ export default function ReviewProgression() {
                 </View>
 
                 <View style={[styles.performanceRow, { borderTopColor: isDark ? '#333' : '#eee' }]}>
+                <View style={{ flexDirection: 'row', gap: 15 }}>
                     {item.category === 'strength' ? (
-                        <View style={{flexDirection: 'row', gap: 15}}>
-                            <Text style={[styles.performanceText, { color: theme.subtext }]}>1RM: <Text style={{color: theme.text}}>{c1RM}kg</Text></Text>
-                            <Text style={[styles.performanceText, { color: theme.subtext }]}>Vol: <Text style={{color: theme.text}}>{cVol.toLocaleString()}kg</Text></Text>
-                        </View>
+                        <>
+                            {/* ONLY SHOW IF GREATER THAN 0 */}
+                            {c1RM > 0 && (
+                                <Text style={[styles.performanceText, { color: theme.subtext }]}>
+                                    1RM: <Text style={{ color: theme.text }}>{c1RM}kg</Text>
+                                </Text>
+                            )}
+                            {totalVolume > 0 && (
+                                <Text style={[styles.performanceText, { color: theme.subtext }]}>
+                                    Vol: <Text style={{ color: theme.text }}>{totalVolume.toLocaleString()}kg</Text>
+                                </Text>
+                            )}
+                            {/* IF BOTH ARE 0 (Standard BW), show a simple label */}
+                            {c1RM === 0 && totalVolume === 0 && (
+                                <Text style={[styles.performanceText, { color: theme.subtext }]}>Bodyweight Session</Text>
+                            )}
+                        </>
                     ) : (
-                        <Text style={[styles.performanceText, { color: theme.subtext }]}>Metric: <Text style={{color: theme.text}}>{item.metricValue || 'Logged'}</Text></Text>
+                        <Text style={[styles.performanceText, { color: theme.subtext }]}>Type: Cardio</Text>
                     )}
-
-                    {/* 📝 NOTES TOGGLE BUTTON */}
+                </View>
                     {item.notes && (
-                        <TouchableOpacity style={styles.notesBtn} onPress={() => toggleNote(item.id)}>
+                        <TouchableOpacity style={styles.notesBtn} onPress={() => setExpandedNotes(prev => ({...prev, [item.id]: !prev[item.id]}))}>
                             <Text style={styles.notesBtnText}>{isNoteExpanded ? 'Hide' : 'Notes'}</Text>
-                            <Ionicons name={isNoteExpanded ? "chevron-up" : "document-text-outline"} size={14} color={theme.accent} />
+                            <Ionicons name="document-text-outline" size={14} color={theme.accent} />
                         </TouchableOpacity>
                     )}
                 </View>
 
-                {/* 📔 EXPANDABLE NOTES CONTENT */}
-                {isNoteExpanded && item.notes && (
-                    <View style={[styles.notesContent, { backgroundColor: theme.noteBg }]}>
+                {isNoteExpanded && (
+                    <View style={[styles.notesContent, { backgroundColor: theme.inputBg }]}>
                         <Text style={[styles.notesText, { color: theme.text }]}>{item.notes}</Text>
                     </View>
                 )}
@@ -213,15 +237,22 @@ export default function ReviewProgression() {
 
     return (
         <View style={{ flex: 1 }}>
-            <LinearGradient colors={isDark ? ['#893636', '#1c1c1e', '#121212'] : ['#3e9aa4', '#CFDEF3', '#f9fafb']} style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={isDark ? ['#1a1a1a', '#121212'] : ['#f0f2f5', '#ffffff']} style={StyleSheet.absoluteFill} />
             <SafeAreaView style={{ flex: 1 }} edges={['top']}>
                 <View style={styles.container}>
                     <Text style={[styles.header, { color: theme.text }]}>Progression</Text>
 
+                    {/* HIDDEN WEB INPUT - REINSTATED */}
                     {Platform.OS === 'web' && (
-                        <input type="date" ref={webDateRef} style={{position:'absolute', opacity:0, zIndex:-1}} onChange={(e) => e.target.value && setSelectedDate(new Date(e.target.value))} />
+                        <input 
+                            type="date" 
+                            ref={webDateRef} 
+                            style={{position:'absolute', opacity:0, zIndex:-1}} 
+                            onChange={(e) => e.target.value && setSelectedDate(new Date(e.target.value))} 
+                        />
                     )}
 
+                    {/* FILTERS */}
                     <View style={styles.toggleContainer}>
                         {(['all', 'strength', 'cardio'] as const).map((t) => (
                             <TouchableOpacity key={t} style={[styles.toggleBtn, categoryFilter === t && (isDark ? styles.activeToggleDark : styles.activeToggleLight)]} onPress={() => setCategoryFilter(t)}>
@@ -252,11 +283,11 @@ export default function ReviewProgression() {
                         keyExtractor={(item) => item.id}
                         renderItem={renderWorkoutItem}
                         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => setRefreshing(true)} />}
-                        contentContainerStyle={{ paddingBottom: 60 }}
+                        contentContainerStyle={{ paddingBottom: 100 }}
                     />
                 </View>
 
-                {/* ACTIVITY PICKER MODAL */}
+                {/* MODALS */}
                 <Modal visible={activityPickerVisible} transparent animationType="fade">
                     <TouchableOpacity style={styles.modalOverlay} onPress={() => setActivityPickerVisible(false)}>
                         <View style={[styles.modalSheet, { backgroundColor: theme.card }]}>
@@ -269,8 +300,58 @@ export default function ReviewProgression() {
                     </TouchableOpacity>
                 </Modal>
 
+                <Modal visible={editModalVisible} animationType="slide" transparent>
+                    <View style={styles.modalOverlay}>
+                        <View style={[styles.editSheet, { backgroundColor: theme.card }]}>
+                            <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Entry</Text>
+                            <ScrollView showsVerticalScrollIndicator={false}>
+                                {editingWorkout?.category === 'strength' ? (
+                                    <View style={styles.editRow}>
+                                        <View style={{flex:1}}><Text style={styles.statLabel}>Sets</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editSets} onChangeText={setEditSets} keyboardType="numeric" /></View>
+                                        <View style={{flex:1}}><Text style={styles.statLabel}>Reps</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editReps} onChangeText={setEditReps} keyboardType="numeric" /></View>
+                                        <View style={{flex:1}}><Text style={styles.statLabel}>Kg</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editWeight} onChangeText={setEditWeight} keyboardType="numeric" /></View>
+                                    </View>
+                                ) : (
+                                    <View style={styles.editRow}>
+                                        <View style={{flex:1}}><Text style={styles.statLabel}>Min</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editDuration} onChangeText={setEditDuration} keyboardType="numeric" /></View>
+                                        <View style={{flex:1}}><Text style={styles.statLabel}>Km</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editDistance} onChangeText={setEditDistance} keyboardType="numeric" /></View>
+                                    </View>
+                                )}
+                                
+                                <Text style={styles.statLabel}>Intensity (RPE 1-10)</Text>
+                                <TextInput 
+                                    style={[styles.input, { backgroundColor: editIntensity ? getRPEColor(Number(editIntensity)) + '15' : theme.inputBg, color: theme.text }]} 
+                                    value={editIntensity} 
+                                    onChangeText={setEditIntensity} 
+                                    keyboardType="numeric" 
+                                />
+
+                                <Text style={styles.statLabel}>Notes</Text>
+                                <TextInput 
+                                    style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text, height: 80, textAlignVertical: 'top'}]} 
+                                    value={editNotes} 
+                                    onChangeText={setEditNotes} 
+                                    multiline 
+                                />
+                                
+                                <TouchableOpacity style={styles.saveBtn} onPress={handleUpdate}>
+                                    <Text style={styles.saveBtnText}>Update Workout</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={{marginVertical: 15, alignItems: 'center'}} onPress={() => setEditModalVisible(false)}>
+                                    <Text style={{color: theme.subtext}}>Cancel</Text>
+                                </TouchableOpacity>
+                            </ScrollView>
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* MOBILE DATE PICKER - REINSTATED */}
                 {Platform.OS !== 'web' && showDatePicker && (
-                    <DateTimePicker value={selectedDate || new Date()} mode="date" onChange={(e, d) => { setShowDatePicker(false); if(d) setSelectedDate(d); }} />
+                    <DateTimePicker 
+                        value={selectedDate || new Date()} 
+                        mode="date" 
+                        onChange={(e, d) => { setShowDatePicker(false); if(d) setSelectedDate(d); }} 
+                    />
                 )}
             </SafeAreaView>
         </View>
@@ -292,27 +373,24 @@ const styles = StyleSheet.create({
     dateText: { fontSize: 12, color: '#8e8e93' },
     activityTitle: { fontSize: 18, fontWeight: '800' },
     statsRow: { flexDirection: 'row', gap: 20, marginTop: 10 },
-    statLabel: { fontSize: 9, color: '#8e8e93', textTransform: 'uppercase' },
-    statValue: { fontSize: 16, fontWeight: '800' },
-    performanceRow: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginTop: 15, 
-        paddingTop: 10, 
-        borderTopWidth: 1 
-    },
+    statLabel: { fontSize: 9, color: '#8e8e93', fontWeight: 'bold', marginBottom: 4, textTransform: 'uppercase' },
+    statValue: { fontSize: 18, fontWeight: '800' },
+    performanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 15, paddingTop: 10, borderTopWidth: 1 },
     performanceText: { fontSize: 12, fontWeight: '600' },
     rpeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginLeft: 10 },
     rpeBadgeText: { fontSize: 10, fontWeight: '800' },
-    clearBanner: { backgroundColor: '#007AFF', padding: 12, borderRadius: 12, marginBottom: 15, alignItems: 'center' },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-    modalSheet: { width: '80%', borderRadius: 20, padding: 20, maxHeight: '70%' },
-    modalItem: { paddingVertical: 15, borderBottomWidth: 0.5, borderBottomColor: '#333' },
-    
-    // New Styles for Notes
     notesBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     notesBtnText: { fontSize: 12, fontWeight: '800', color: '#007AFF' },
     notesContent: { marginTop: 12, padding: 12, borderRadius: 12 },
-    notesText: { fontSize: 13, fontStyle: 'italic', lineHeight: 18 }
+    notesText: { fontSize: 13, fontStyle: 'italic', lineHeight: 18 },
+    clearBanner: { backgroundColor: '#007AFF', padding: 12, borderRadius: 12, marginBottom: 15, alignItems: 'center' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+    modalSheet: { width: '80%', borderRadius: 20, padding: 20, maxHeight: '70%' },
+    modalItem: { paddingVertical: 15, borderBottomWidth: 0.5, borderBottomColor: '#333' },
+    editSheet: { width: '100%', position: 'absolute', bottom: 0, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, height: '75%' },
+    modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 20 },
+    editRow: { flexDirection: 'row', gap: 15, marginBottom: 20 },
+    input: { padding: 15, borderRadius: 12, fontSize: 16, fontWeight: 'bold' },
+    saveBtn: { backgroundColor: '#007AFF', padding: 18, borderRadius: 15, alignItems: 'center', marginTop: 15 },
+    saveBtnText: { color: '#fff', fontWeight: '900', fontSize: 16 }
 });

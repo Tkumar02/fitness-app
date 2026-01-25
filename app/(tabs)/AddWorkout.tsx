@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { addDoc, collection, onSnapshot, query, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, query, serverTimestamp, where } from 'firebase/firestore';
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView,
@@ -85,30 +85,62 @@ export default function AddWorkoutPage() {
         return '--';
     }, [metricValue, duration, currentMetric, unit, focus]);
 
-    const handleSaveWorkout = async () => {
-        if (loading) return;
-        if (!user?.uid || !activity) return Alert.alert("Error", "Select activity");
-        
-        setLoading(true);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+const handleSaveWorkout = async () => {
+    if (loading) return;
+    if (!user?.uid || !activity) return Alert.alert("Error", "Select activity");
+    
+    setLoading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-        const mVal = parseFloat(metricValue) || 0;
-        const dur = parseFloat(duration) || 0;
-        
-        // Calculate final distance for storage if in performance mode
-        let finalDistance = mVal;
-        if (workoutType === 'cardio' && currentMetric === 'DISTANCE' && focus === 'performance') {
-            finalDistance = parseFloat((mVal * (dur / 60)).toFixed(2));
-        }
+    const mVal = parseFloat(metricValue) || 0;
+    const dur = parseFloat(duration) || 0;
+    
+    let finalDistance = mVal; 
+    if (workoutType === 'cardio' && currentMetric === 'DISTANCE' && focus === 'performance') {
+        finalDistance = parseFloat((mVal * (dur / 60)).toFixed(2));
+    }
 
-        const workoutData = {
+    try {
+        // 1. CHECK FOR GOALS
+        const goalsRef = collection(db, 'users', user.uid, 'activeGoals');
+        const q = query(goalsRef, where('activity', '==', activity));
+        const goalSnap = await getDocs(q);
+        
+        let metGoalId = null;
+        let isGoalAchieved = false;
+
+        goalSnap.forEach((doc) => {
+            const goal = doc.data();
+            if (workoutType === 'strength') {
+                const weightUsed = isBodyweight ? (parseFloat(weight) || 0) : (parseFloat(weight) || 0);
+                // Achieve if weight matches/exceeds AND reps match/exceed
+                if (weightUsed >= goal.loadGoal && parseInt(reps) >= goal.repsGoal) {
+                    isGoalAchieved = true;
+                    metGoalId = doc.id;
+                }
+            } else {
+                if (focus === 'performance') {
+                    if (mVal >= goal.speedGoal && dur >= goal.timeGoal) {
+                        isGoalAchieved = true;
+                        metGoalId = doc.id;
+                    }
+                } else {
+                    if (finalDistance >= goal.distGoal && dur <= goal.timeGoal) {
+                        isGoalAchieved = true;
+                        metGoalId = doc.id;
+                    }
+                }
+            }
+        });
+
+        // 2. SAVE THE WORKOUT (ONE SINGLE CALL)
+        await addDoc(collection(db, 'workouts'), {
             userId: user.uid,
             activity,
             category: workoutType,
             metricType: currentMetric,
-            // If performance, metricValue is Speed. If endurance, it's Distance.
-            metricValue: mVal, 
-            calculatedDistance: currentMetric === 'DISTANCE' ? finalDistance : null,
+            metricValue: mVal,
+            distance: currentMetric === 'DISTANCE' ? finalDistance : null,
             duration: dur,
             unit: currentMetric === 'DISTANCE' ? unit : null,
             focus: workoutType === 'cardio' ? focus : null,
@@ -119,19 +151,50 @@ export default function AddWorkoutPage() {
             reps: parseInt(reps) || 0,
             rpe,
             notes,
+            goalMet: isGoalAchieved, // SAVE THE GOAL STATUS
+            achievedGoalId: metGoalId,
             date: new Date().toISOString().split('T')[0],
             createdAt: serverTimestamp(),
-        };
+        });
 
-        try {
-            await addDoc(collection(db, 'workouts'), workoutData);
+        // 3. DELETE THE GOAL IF ACHIEVED
+        if (isGoalAchieved && metGoalId) {
+            await deleteDoc(doc(db, 'users', user.uid, 'activeGoals', metGoalId));
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            if (Platform.OS === 'web') {
+        window.alert("Goal Achieved! 🎉");
+    } else {
+        Alert.alert("Goal Achieved! 🎉",
+                `Congratulations! You've officially smashed your goal for ${activity}.`,
+                [{ text: "Awesome!", onPress: () => navigation.navigate('ReviewWorkout') }]);
+    }
+           
+            } else {
+            // Standard haptic for regular workout save
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             navigation.navigate('ReviewWorkout');
-        } catch (e) { 
-            Alert.alert("Error", "Save failed"); 
-            setLoading(false);
         }
-    };
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        // RESET STATE
+        setLoading(false);
+        setActivity(''); 
+        setMetricValue('');
+        setDuration('');
+        setWeight('');
+        setSets('');
+        setReps('');
+        setNotes('');
+        
+        navigation.navigate('ReviewWorkout');
+
+    } catch (e) { 
+        console.error(e);
+        Alert.alert("Error", "Save failed"); 
+        setLoading(false);
+    }
+};
 
     const getRPEColor = (num: number) => {
     if (num <= 3) return '#4ade80'; // Green
@@ -163,86 +226,100 @@ export default function AddWorkoutPage() {
                         </View>
 
                         <View style={styles.card}>
-                            <View style={styles.mainTabRow}>
-                                <TouchableOpacity style={[styles.mainTab, workoutType === 'strength' && styles.activeStrength]} onPress={() => setWorkoutType('strength')}>
-                                    <Text style={styles.tabLabel}>STRENGTH</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={[styles.mainTab, workoutType === 'cardio' && styles.activeCardio]} onPress={() => setWorkoutType('cardio')}>
-                                    <Text style={styles.tabLabel}>CARDIO</Text>
-                                </TouchableOpacity>
-                            </View>
+    <View style={styles.mainTabRow}>
+        <TouchableOpacity style={[styles.mainTab, workoutType === 'strength' && styles.activeStrength]} onPress={() => { 
+            setWorkoutType('strength'); 
+            setActivity(''); 
+            setSelectedMetricForNew('')}}>
+            <Text style={styles.tabLabel}>STRENGTH</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.mainTab, workoutType === 'cardio' && styles.activeCardio]} onPress={() => { setWorkoutType('cardio'); setActivity(''); }}>
+            <Text style={styles.tabLabel}>CARDIO</Text>
+        </TouchableOpacity>
+    </View>
 
-                            <TouchableOpacity style={styles.pickerTrigger} onPress={() => setPickerVisible(true)}>
-                                <View>
-                                    <Text style={styles.pickerLabel}>ACTIVITY</Text>
-                                    <Text style={styles.pickerTriggerText}>{activity || "Select Exercise..."}</Text>
-                                </View>
-                                <Ionicons name="chevron-down" size={20} color="#fff" />
+    <TouchableOpacity style={styles.pickerTrigger} onPress={() => setPickerVisible(true)}>
+        <View>
+            <Text style={styles.pickerLabel}>ACTIVITY</Text>
+            <Text style={styles.pickerTriggerText}>{activity || "Select Exercise..."}</Text>
+        </View>
+        <Ionicons name="chevron-down" size={20} color="#fff" />
+    </TouchableOpacity>
+
+    {/* --- CONDITIONAL UI: ONLY SHOW IF ACTIVITY IS SELECTED --- */}
+    {!activity ? (
+        <View style={styles.emptyState}>
+            <Ionicons name="barbell-outline" size={40} color="#222" />
+            <Text style={styles.emptyStateText}>Choose an exercise to start logging</Text>
+        </View>
+    ) : (
+        <View>
+            {workoutType === 'cardio' ? (
+                <View>
+                    {currentMetric === 'DISTANCE' && (
+                        <View style={styles.toggleRow}>
+                            <TouchableOpacity style={[styles.toggleBtn, focus === 'endurance' && styles.activeCardio]} onPress={() => setFocus('endurance')}>
+                                <Text style={styles.toggleText}>ENDURANCE</Text>
                             </TouchableOpacity>
-
-                            {workoutType === 'cardio' ? (
-                                <View>
-                                    {currentMetric === 'DISTANCE' && (
-                                        <View style={styles.toggleRow}>
-                                            <TouchableOpacity style={[styles.toggleBtn, focus === 'endurance' && styles.activeCardio]} onPress={() => setFocus('endurance')}>
-                                                <Text style={styles.toggleText}>ENDURANCE</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity style={[styles.toggleBtn, focus === 'performance' && styles.activeCardio]} onPress={() => setFocus('performance')}>
-                                                <Text style={styles.toggleText}>PERFORMANCE</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    )}
-
-                                    <Text style={styles.label}>TIME (MINUTES)</Text>
-                                    <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={duration} onChangeText={setDuration} />
-
-                                    <View style={{ marginTop: 20 }}>
-                                        <Text style={styles.label}>
-                                            {currentMetric !== 'DISTANCE' ? (currentMetric === 'FLOORS' ? 'TOTAL FLOORS' : 'INTENSITY LEVEL') : 
-                                             (focus === 'performance' ? `SPEED (${unit === 'km' ? 'KM/H' : 'MPH'})` : `DISTANCE (${unit.toUpperCase()})`)}
-                                        </Text>
-                                        <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={metricValue} onChangeText={setMetricValue} />
-                                    </View>
-                                    
-                                    <View style={styles.resBox}><Text style={styles.resVal}>{secondaryStats}</Text></View>
-                                </View>
-                            ) : (
-                                <View>
-                                    <View style={styles.toggleRow}>
-                                        <TouchableOpacity style={[styles.toggleBtn, !isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(false)}><Text style={styles.toggleText}>KG</Text></TouchableOpacity>
-                                        <TouchableOpacity style={[styles.toggleBtn, isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(true)}><Text style={styles.toggleText}>BODYWEIGHT</Text></TouchableOpacity>
-                                    </View>
-                                    <View style={styles.strengthRow}>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.label}>{isBodyweight ? '+ KG' : 'KG'}</Text>
-                                            <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={weight} onChangeText={setWeight} />
-                                        </View>
-                                        <View style={{ flex: 1 }}><Text style={styles.label}>SETS</Text><TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={sets} onChangeText={setSets} /></View>
-                                        <View style={{ flex: 1 }}><Text style={styles.label}>REPS</Text><TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={reps} onChangeText={setReps} /></View>
-                                    </View>
-                                </View>
-                            )}
-
-                            <Text style={[styles.label, { marginTop: 25 }]}>EFFORT (RPE: {rpe})</Text>
-                            <View style={styles.rpeRow}>
-                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
-                                    <TouchableOpacity key={num} style={[styles.rpeCircle, rpe === num && { backgroundColor: getRPEColor(num), borderColor: getRPEColor(num) }]} onPress={() => setRpe(num)}>
-                                        <Text style={[styles.rpeText, rpe === num && { color: '#000' }]}>{num}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-
-                            <Text style={[styles.label, { marginTop: 20 }]}>NOTES</Text>
-                            <TextInput style={styles.notesInput} placeholder="How did it feel?" placeholderTextColor="#333" multiline value={notes} onChangeText={setNotes} />
-
-                            <TouchableOpacity 
-                                style={[styles.saveBtn, loading && { opacity: 0.7 }]} 
-                                onPress={handleSaveWorkout}
-                                disabled={loading}
-                            >
-                                {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>LOG WORKOUT</Text>}
+                            <TouchableOpacity style={[styles.toggleBtn, focus === 'performance' && styles.activeCardio]} onPress={() => setFocus('performance')}>
+                                <Text style={styles.toggleText}>PERFORMANCE</Text>
                             </TouchableOpacity>
                         </View>
+                    )}
+
+                    <Text style={styles.label}>TIME (MINUTES)</Text>
+                    <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={duration} onChangeText={setDuration} />
+
+                    <View style={{ marginTop: 20 }}>
+                        <Text style={styles.label}>
+                            {currentMetric !== 'DISTANCE' ? (currentMetric === 'FLOORS' ? 'TOTAL FLOORS' : 'INTENSITY LEVEL') : 
+                             (focus === 'performance' ? `SPEED (${unit === 'km' ? 'KM/H' : 'MPH'})` : `DISTANCE (${unit.toUpperCase()})`)}
+                        </Text>
+                        <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={metricValue} onChangeText={setMetricValue} />
+                    </View>
+                    
+                    <View style={styles.resBox}><Text style={styles.resVal}>{secondaryStats}</Text></View>
+                </View>
+            ) : (
+                <View>
+                    <View style={styles.toggleRow}>
+                        <TouchableOpacity style={[styles.toggleBtn, !isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(false)}><Text style={styles.toggleText}>KG</Text></TouchableOpacity>
+                        <TouchableOpacity style={[styles.toggleBtn, isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(true)}><Text style={styles.toggleText}>BODYWEIGHT</Text></TouchableOpacity>
+                    </View>
+                    <View style={styles.strengthRow}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.label}>{isBodyweight ? '+ KG' : 'KG'}</Text>
+                            <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={weight} onChangeText={setWeight} />
+                        </View>
+                        <View style={{ flex: 1 }}><Text style={styles.label}>SETS</Text><TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={sets} onChangeText={setSets} /></View>
+                        <View style={{ flex: 1 }}><Text style={styles.label}>REPS</Text><TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={reps} onChangeText={setReps} /></View>
+                    </View>
+                </View>
+            )}
+
+            {/* RPE and Notes only show if activity is selected too */}
+            <Text style={[styles.label, { marginTop: 25 }]}>EFFORT (RPE: {rpe})</Text>
+            <View style={styles.rpeRow}>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                    <TouchableOpacity key={num} style={[styles.rpeCircle, rpe === num && { backgroundColor: getRPEColor(num), borderColor: getRPEColor(num) }]} onPress={() => setRpe(num)}>
+                        <Text style={[styles.rpeText, rpe === num && { color: '#000' }]}>{num}</Text>
+                    </TouchableOpacity>
+                ))}
+            </View>
+
+            <Text style={[styles.label, { marginTop: 20 }]}>NOTES</Text>
+            <TextInput style={styles.notesInput} placeholder="How did it feel?" placeholderTextColor="#333" multiline value={notes} onChangeText={setNotes} />
+
+            <TouchableOpacity 
+                style={[styles.saveBtn, loading && { opacity: 0.7 }]} 
+                onPress={handleSaveWorkout}
+                disabled={loading}
+            >
+                {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>LOG WORKOUT</Text>}
+            </TouchableOpacity>
+        </View>
+    )}
+</View>
                     </ScrollView>
                 </KeyboardAvoidingView>
             </SafeAreaView>
@@ -264,8 +341,12 @@ export default function AddWorkoutPage() {
                             )}
                             <TouchableOpacity style={styles.addBtn} onPress={async () => {
                                 if (!newActivityName) return;
-                                await addDoc(collection(db, 'users', user!.uid, 'customEquipment'), { name: newActivityName, category: workoutType, metricType: selectedMetricForNew });
-                                handleSelectActivity(newActivityName, selectedMetricForNew);
+                                const metricToSave = workoutType === 'strength' ? 'WEIGHT' : selectedMetricForNew;
+                                await addDoc(collection(db, 'users', user!.uid, 'customEquipment'), { 
+                                    name: newActivityName, 
+                                    category: workoutType, 
+                                    metricType: metricToSave });
+                                handleSelectActivity(newActivityName, metricToSave);
                                 setNewActivityName('');
                             }}><Text style={{fontWeight: '900', color: '#000'}}>ADD & SELECT</Text></TouchableOpacity>
                         </View>
@@ -330,5 +411,18 @@ const styles = StyleSheet.create({
     optionItem: { paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: '#111', flexDirection: 'row', justifyContent: 'space-between' },
     optionText: { color: '#fff', fontSize: 18 },
     optionSub: { color: '#444', fontSize: 10, fontWeight: 'bold' },
-    closeBtn: { marginTop: 20, padding: 20, borderRadius: 15, alignItems: 'center', backgroundColor: '#111' }
+    closeBtn: { marginTop: 20, padding: 20, borderRadius: 15, alignItems: 'center', backgroundColor: '#111' },
+    emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    opacity: 0.5
+},
+emptyStateText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase'
+},
 });
