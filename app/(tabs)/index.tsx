@@ -5,16 +5,16 @@ import { signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import React, { useContext, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  DimensionValue,
-  ImageBackground,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useColorScheme,
-  View
+    ActivityIndicator,
+    Alert,
+    DimensionValue,
+    ImageBackground,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useColorScheme,
+    View
 } from 'react-native';
 // Note: Path assumes context is in the root directory, outside of 'app'
 import { UserContext } from '../../context/UserContext';
@@ -173,7 +173,7 @@ export default function HomePage() {
                             <View style={styles.header}>
                                 <View style={styles.titleRow}>
                                     <View>
-                                        <Text style={[styles.welcome, { color: theme.subtext }]}>Welcome back,</Text>
+                                        <Text style={[styles.welcome, { color: theme.subtext }]}>Welcome!</Text>
                                         <Text style={[styles.user, { color: theme.text }]}>{username} 👋</Text>
                                     </View>
                                     <TouchableOpacity 

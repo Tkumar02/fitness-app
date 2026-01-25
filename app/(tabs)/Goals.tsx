@@ -4,254 +4,291 @@ import {
     addDoc, collection, deleteDoc, doc, getDoc,
     onSnapshot, orderBy, query, serverTimestamp, setDoc, where
 } from 'firebase/firestore';
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
     Alert, KeyboardAvoidingView, Modal, Platform, ScrollView,
-    StyleSheet, Text, TextInput, TouchableOpacity, useColorScheme, View
+    StyleSheet, Text, TextInput, TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserContext } from '../../context/UserContext';
 
 export default function GoalsPage() {
     const { user } = useContext(UserContext);
-    const isDark = useColorScheme() === 'dark';
     
-    // 1. Weekly Frequency States
+    // --- Pro Color Palette ---
+    const colors = {
+        bg: '#000000',
+        card: '#0a0f0d',
+        border: '#1a2e25',
+        accentGreen: '#a7ff83',
+        cardio: '#c75434',
+        strength: '#007AFF',
+        textMain: '#FFFFFF',
+        textDim: '#8e8e93'
+    };
+
+    // --- State ---
+    const [unit, setUnit] = useState<'km' | 'mi'>('km');
     const [strengthTarget, setStrengthTarget] = useState('0');
     const [cardioTarget, setCardioTarget] = useState('0');
-    
-    // 2. Goal Creation States
     const [goalCategory, setGoalCategory] = useState<'cardio' | 'strength'>('strength');
     const [activity, setActivity] = useState('');
     const [customList, setCustomList] = useState<{name: string, category: string}[]>([]);
     const [isAddingNew, setIsAddingNew] = useState(false);
     const [newActivityName, setNewActivityName] = useState('');
     const [pickerVisible, setPickerVisible] = useState(false);
-    
-    // 3. Metric States
+    const [logMethod, setLogMethod] = useState<'distance' | 'speed'>('distance');
     const [distGoal, setDistGoal] = useState('');
     const [timeGoal, setTimeGoal] = useState('');
+    const [speedGoal, setSpeedGoal] = useState(''); 
     const [loadGoal, setLoadGoal] = useState('');
     const [setsGoal, setSetsGoal] = useState('');
     const [repsGoal, setRepsGoal] = useState('');
-    const [cardioMode, setCardioMode] = useState<'endurance' | 'performance'>('endurance');
-
-    // 4. Data Lists
     const [activeGoals, setActiveGoals] = useState<any[]>([]);
     const [completedGoals, setCompletedGoals] = useState<any[]>([]);
 
-    const cardioStandards = ['Running', 'Cycling', 'Rowing', 'Swimming', 'Walking'];
-    const strengthStandards = ['Bench Press', 'Squat', 'Deadlift', 'Shoulder Press', 'Leg Press'];
+    // --- Math ---
+    const calculatedPace = useMemo(() => {
+        const d = parseFloat(distGoal);
+        const t = parseFloat(timeGoal);
+        if (d > 0 && t > 0) {
+            const paceDec = t / d;
+            const mins = Math.floor(paceDec);
+            const secs = Math.round((paceDec - mins) * 60);
+            return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+        return '0:00';
+    }, [distGoal, timeGoal]);
+
+    const distFromSpeed = useMemo(() => {
+        const s = parseFloat(speedGoal);
+        const t = parseFloat(timeGoal);
+        return (s > 0 && t > 0) ? ((s * t) / 60).toFixed(2) : '0.00';
+    }, [speedGoal, timeGoal]);
 
     useEffect(() => {
         if (!user?.uid) return;
-        
-        // Load Weekly Targets
         const loadSettings = async () => {
             const docSnap = await getDoc(doc(db, 'users', user.uid, 'settings', 'goals'));
             if (docSnap.exists()) {
                 setStrengthTarget(docSnap.data().strengthTarget?.toString() || '0');
                 setCardioTarget(docSnap.data().cardioTarget?.toString() || '0');
+                setUnit(docSnap.data().unit || 'km');
             }
         };
         loadSettings();
-
-        // Listen for Custom Activities
         const unsubCustom = onSnapshot(query(collection(db, 'users', user.uid, 'customEquipment')), (snap) => {
             setCustomList(snap.docs.map(d => ({ name: d.data().name, category: d.data().category })));
         });
-
-        // Listen for Active Trophies
         const unsubActive = onSnapshot(query(collection(db, 'users', user.uid, 'activeGoals'), orderBy('createdAt', 'desc')), (snap) => {
             setActiveGoals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
-
-        // Listen for Wall of Fame (Completed Workouts)
         const unsubDone = onSnapshot(query(collection(db, 'workouts'), where('userId', '==', user.uid), where('goalMet', '==', true), orderBy('date', 'desc')), (snap) => {
             setCompletedGoals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
-
         return () => { unsubCustom(); unsubActive(); unsubDone(); };
     }, [user]);
 
     const handleSaveGoal = async () => {
         if (!user?.uid) return;
         const finalActivity = isAddingNew ? newActivityName.trim() : activity;
-        if (!finalActivity) { Alert.alert("Missing Info", "Select an activity."); return; }
+        if (!finalActivity) return Alert.alert("Selection Required", "Please choose an activity.");
         
         try {
-            // Save Frequency Settings
             await setDoc(doc(db, 'users', user.uid, 'settings', 'goals'), {
                 strengthTarget: Number(strengthTarget),
                 cardioTarget: Number(cardioTarget),
+                unit,
                 updatedAt: serverTimestamp()
             }, { merge: true });
 
-            // Prepare Trophy Goal
             const goalData: any = {
                 activity: finalActivity,
                 category: goalCategory,
                 createdAt: serverTimestamp(),
                 userId: user.uid,
+                unit,
+                logMethod: goalCategory === 'cardio' ? logMethod : null,
             };
 
             if (goalCategory === 'strength') {
-                const w = Number(loadGoal) || 0;
-                const r = Number(repsGoal) || 0;
-                const s = Number(setsGoal) || 0;
-                goalData.loadGoal = w;
-                goalData.setsGoal = s;
-                goalData.repsGoal = r;
-                // NEW MATH: 1RM and Total Volume Targets
-                goalData.target1RM = w * (1 + r / 30);
-                goalData.targetVolume = w * r * s;
+                goalData.loadGoal = Number(loadGoal) || 0;
+                goalData.setsGoal = Number(setsGoal) || 0;
+                goalData.repsGoal = Number(repsGoal) || 0;
             } else {
-                goalData.distGoal = Number(distGoal) || 0;
                 goalData.timeGoal = Number(timeGoal) || 0;
-                goalData.cardioMode = cardioMode;
+                if (logMethod === 'speed') {
+                    goalData.speedGoal = Number(speedGoal) || 0;
+                    goalData.distGoal = Number(distFromSpeed);
+                } else {
+                    goalData.distGoal = Number(distGoal) || 0;
+                    goalData.targetPace = calculatedPace;
+                }
             }
-
             await addDoc(collection(db, 'users', user.uid, 'activeGoals'), goalData);
-
             if (isAddingNew) {
-                await setDoc(doc(db, 'users', user.uid, 'customEquipment', finalActivity), {
-                    name: finalActivity, category: goalCategory
-                });
+                await addDoc(collection(db, 'users', user.uid, 'customEquipment'), { name: finalActivity, category: goalCategory });
             }
-
-            Alert.alert("Goal Set!", "Chase that trophy!");
-            setActivity(''); setLoadGoal(''); setSetsGoal(''); setRepsGoal(''); setDistGoal(''); setTimeGoal('');
+            setActivity(''); setLoadGoal(''); setSetsGoal(''); setRepsGoal(''); setDistGoal(''); setTimeGoal(''); setSpeedGoal('');
             setIsAddingNew(false); setNewActivityName('');
-        } catch (e) { Alert.alert("Error", "Save failed."); }
+        } catch (e) { Alert.alert("Error", "Could not save goal."); }
     };
 
     const dropdownOptions = [
-        ...(goalCategory === 'cardio' ? cardioStandards : strengthStandards),
+        ...(goalCategory === 'cardio' ? ['Running', 'Cycling', 'Rowing', 'Walking'] : ['Bench Press', 'Squat', 'Deadlift', 'Shoulder Press']),
         ...customList.filter(i => i.category === goalCategory).map(i => i.name)
     ];
 
-    const inputBg = isDark ? '#2c2c2e' : '#f2f2f7';
-    const textColor = isDark ? '#fff' : '#000';
-    const cardBg = isDark ? '#1c1c1e' : '#fff';
-
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#121212' : '#f9fafb' }}>
+        <SafeAreaView style={styles.safeArea}>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                <ScrollView contentContainerStyle={{ padding: 20 }}>
+                <ScrollView contentContainerStyle={styles.scrollContent}>
                     
-                    {/* 1. FREQUENCY SECTION */}
-                    <Text style={[styles.sectionHeader, { color: textColor }]}>📅 Weekly Targets</Text>
-                    <View style={[styles.card, { backgroundColor: cardBg, marginBottom: 25 }]}>
-                        <View style={styles.row}>
-                            <View style={styles.inputWrap}>
-                                <Text style={styles.label}>Strength Sessions</Text>
-                                <TextInput style={[styles.input, { color: textColor, backgroundColor: inputBg }]} keyboardType="numeric" value={strengthTarget} onChangeText={setStrengthTarget} />
+                    {/* HUD SECTION: WEEKLY TARGETS */}
+                    <View style={styles.hudContainer}>
+                        <Text style={styles.hudTitle}>WEEKLY TARGETS</Text>
+                        <View style={styles.hudCard}>
+                            <View style={styles.hudBox}>
+                                <Text style={styles.hudLabel}>STRENGTH</Text>
+                                <TextInput style={styles.hudInput} keyboardType="numeric" value={strengthTarget} onChangeText={setStrengthTarget} />
+                                <Text style={styles.hudSub}>SESSIONS</Text>
                             </View>
-                            <View style={styles.inputWrap}>
-                                <Text style={styles.label}>Cardio Sessions</Text>
-                                <TextInput style={[styles.input, { color: textColor, backgroundColor: inputBg }]} keyboardType="numeric" value={cardioTarget} onChangeText={setCardioTarget} />
+                            <View style={styles.hudDivider} />
+                            <View style={styles.hudBox}>
+                                <Text style={styles.hudLabel}>CARDIO</Text>
+                                <TextInput style={styles.hudInput} keyboardType="numeric" value={cardioTarget} onChangeText={setCardioTarget} />
+                                <Text style={styles.hudSub}>SESSIONS</Text>
                             </View>
                         </View>
                     </View>
 
-                    {/* 2. ACTIVE TROPHIES */}
-                    <Text style={[styles.sectionHeader, { color: textColor }]}>🎯 Active Achievement Goals</Text>
-                    {activeGoals.map((g) => (
-                        <View key={g.id} style={[styles.activeCard, { backgroundColor: g.category === 'cardio' ? '#c75434' : '#007AFF' }]}>
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.activeTitle}>{g.activity}</Text>
-                                <Text style={styles.activeSub}>
-                                    {g.category === 'strength' 
-                                        ? `${g.loadGoal}kg • ${g.setsGoal}x${g.repsGoal} (Vol: ${g.targetVolume})`
-                                        : g.cardioMode === 'performance' ? `${g.distGoal}km under ${g.timeGoal}m` : `${g.distGoal}km or ${g.timeGoal}m`}
-                                </Text>
-                            </View>
-                            <TouchableOpacity onPress={() => deleteDoc(doc(db, 'users', user!.uid, 'activeGoals', g.id))}>
-                                <Ionicons name="close-circle" size={24} color="#fff" />
-                            </TouchableOpacity>
-                        </View>
-                    ))}
-
-                    {/* 3. NEW GOAL CREATOR */}
-                    <View style={[styles.card, { backgroundColor: cardBg, marginTop: 15 }]}>
-                        <Text style={[styles.title, { color: textColor }]}>New Milestone</Text>
-                        <View style={[styles.toggleRow, { backgroundColor: inputBg }]}>
-                            <TouchableOpacity style={[styles.toggleBtn, goalCategory === 'strength' && { backgroundColor: '#007AFF' }]} onPress={() => setGoalCategory('strength')}>
-                                <Text style={{ color: goalCategory === 'strength' ? '#fff' : '#8e8e93', fontWeight: 'bold', fontSize: 12 }}>STRENGTH</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.toggleBtn, goalCategory === 'cardio' && { backgroundColor: '#c75434' }]} onPress={() => setGoalCategory('cardio')}>
-                                <Text style={{ color: goalCategory === 'cardio' ? '#fff' : '#8e8e93', fontWeight: 'bold', fontSize: 12 }}>CARDIO</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <TouchableOpacity style={[styles.picker, { backgroundColor: inputBg, marginTop: 15 }]} onPress={() => setPickerVisible(true)}>
-                            <Text style={{ color: activity ? textColor : '#8e8e93', fontWeight: 'bold' }}>{activity || "Choose Exercise..."}</Text>
-                        </TouchableOpacity>
-
-                        {isAddingNew && (
-                            <TextInput style={[styles.input, { color: textColor, backgroundColor: inputBg, marginTop: 10, borderWidth: 1, borderColor: '#007AFF' }]} placeholder="Activity Name..." placeholderTextColor="#8e8e93" value={newActivityName} onChangeText={setNewActivityName} />
-                        )}
-
-                        {goalCategory === 'strength' ? (
-                            <View style={styles.row}>
-                                <View style={styles.inputWrap}><Text style={styles.label}>kg</Text><TextInput style={[styles.input, { color: textColor, backgroundColor: inputBg }]} keyboardType="numeric" value={loadGoal} onChangeText={setLoadGoal} /></View>
-                                <View style={styles.inputWrap}><Text style={styles.label}>Sets</Text><TextInput style={[styles.input, { color: textColor, backgroundColor: inputBg }]} keyboardType="numeric" value={setsGoal} onChangeText={setSetsGoal} /></View>
-                                <View style={styles.inputWrap}><Text style={styles.label}>Reps</Text><TextInput style={[styles.input, { color: textColor, backgroundColor: inputBg }]} keyboardType="numeric" value={repsGoal} onChangeText={setRepsGoal} /></View>
-                            </View>
-                        ) : (
-                            <View>
-                                <Text style={[styles.miniLabel, {marginTop: 15}]}>Cardio Strategy</Text>
-                                <View style={[styles.toggleRow, { backgroundColor: inputBg, marginBottom: 10 }]}>
-                                    <TouchableOpacity style={[styles.toggleBtn, cardioMode === 'endurance' && { backgroundColor: '#8e8e93' }]} onPress={() => setCardioMode('endurance')}>
-                                        <Text style={{ color: '#fff', fontSize: 10 }}>ENDURANCE</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity style={[styles.toggleBtn, cardioMode === 'performance' && { backgroundColor: '#FF9500' }]} onPress={() => setCardioMode('performance')}>
-                                        <Text style={{ color: '#fff', fontSize: 10 }}>PERFORMANCE (TARGET)</Text>
-                                    </TouchableOpacity>
+                    {/* TROPHY SHELF: ACTIVE ACHIEVEMENTS */}
+                    <View style={styles.section}>
+                        <Text style={styles.hudTitle}>ACTIVE QUESTS</Text>
+                        {activeGoals.map((g) => (
+                            <View key={g.id} style={[styles.questCard, { borderColor: g.category === 'cardio' ? colors.cardio : colors.strength }]}>
+                                <View style={[styles.questIcon, { backgroundColor: g.category === 'cardio' ? colors.cardio : colors.strength }]}>
+                                    <Ionicons name="trophy" size={18} color="#fff" />
                                 </View>
-                                <View style={styles.row}>
-                                    <View style={styles.inputWrap}><Text style={styles.label}>km</Text><TextInput style={[styles.input, { color: textColor, backgroundColor: inputBg }]} keyboardType="decimal-pad" value={distGoal} onChangeText={setDistGoal} /></View>
-                                    <View style={styles.inputWrap}><Text style={styles.label}>min</Text><TextInput style={[styles.input, { color: textColor, backgroundColor: inputBg }]} keyboardType="numeric" value={timeGoal} onChangeText={setTimeGoal} /></View>
+                                <View style={{ flex: 1, marginLeft: 15 }}>
+                                    <Text style={styles.questTitle}>{g.activity}</Text>
+                                    <Text style={styles.questSub}>
+                                        {g.category === 'strength' 
+                                            ? `${g.loadGoal}kg • ${g.setsGoal}x${g.repsGoal}`
+                                            : g.logMethod === 'speed' ? `${g.speedGoal}${g.unit === 'km' ? 'km/h' : 'mph'} for ${g.timeGoal}m` : `${g.distGoal}${g.unit} in ${g.timeGoal}m`}
+                                    </Text>
                                 </View>
-                            </View>
-                        )}
-
-                        <TouchableOpacity style={[styles.btn, { backgroundColor: goalCategory === 'strength' ? '#007AFF' : '#c75434' }]} onPress={handleSaveGoal}>
-                            <Text style={styles.btnText}>Set Achievement</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* 4. WALL OF FAME */}
-                    <View style={{ marginTop: 40, paddingBottom: 50 }}>
-                        <Text style={[styles.sectionHeader, { color: textColor }]}>🏆 Wall of Fame</Text>
-                        {completedGoals.length === 0 && <Text style={{color: '#8e8e93'}}>No trophies won yet. Get training!</Text>}
-                        {completedGoals.map((goal) => (
-                            <View key={goal.id} style={[styles.mileCard, { backgroundColor: cardBg }]}>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={[styles.mileTitle, { color: textColor }]}>{goal.activity}</Text>
-                                    <Text style={styles.mileSub}>Achieved: {goal.date}</Text>
-                                </View>
-                                <Text style={styles.mileStat}>{goal.category === 'cardio' ? goal.distance+'km' : goal.weight+'kg'}</Text>
+                                <TouchableOpacity onPress={() => deleteDoc(doc(db, 'users', user!.uid, 'activeGoals', g.id))}>
+                                    <Ionicons name="trash-outline" size={18} color="#666" />
+                                </TouchableOpacity>
                             </View>
                         ))}
+                    </View>
+
+                    {/* MAIN CONSOLE: NEW MILESTONE */}
+                    <View style={styles.mainCard}>
+                        <Text style={styles.mainCardTitle}>NEW MILESTONE</Text>
+                        
+                        <View style={styles.toggleRow}>
+                            <TouchableOpacity style={[styles.toggleBtn, goalCategory === 'strength' && { backgroundColor: colors.strength }]} onPress={() => setGoalCategory('strength')}>
+                                <Text style={styles.toggleText}>STRENGTH</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.toggleBtn, goalCategory === 'cardio' && { backgroundColor: colors.cardio }]} onPress={() => setGoalCategory('cardio')}>
+                                <Text style={styles.toggleText}>CARDIO</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <TouchableOpacity style={styles.selector} onPress={() => setPickerVisible(true)}>
+                            <Text style={{ color: activity ? '#fff' : '#666', fontWeight: 'bold' }}>{activity || "SELECT ACTIVITY"}</Text>
+                            <Ionicons name="chevron-down" size={16} color="#666" />
+                        </TouchableOpacity>
+
+                        {goalCategory === 'cardio' && (
+                            <View style={styles.methodRow}>
+                                <TouchableOpacity onPress={() => setLogMethod('distance')} style={[styles.mBtn, logMethod === 'distance' && styles.mBtnActive]}>
+                                    <Text style={styles.mText}>DISTANCE</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setLogMethod('speed')} style={[styles.mBtn, logMethod === 'speed' && styles.mBtnActive]}>
+                                    <Text style={styles.mText}>SPEED</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
+                        <View style={{marginTop: 20}}>
+                            {goalCategory === 'strength' ? (
+                                <View style={styles.inputRow}>
+                                    <View style={styles.inputStack}><Text style={styles.label}>KG</Text><TextInput style={styles.mainInput} keyboardType="numeric" value={loadGoal} onChangeText={setLoadGoal} /></View>
+                                    <View style={styles.inputStack}><Text style={styles.label}>SETS</Text><TextInput style={styles.mainInput} keyboardType="numeric" value={setsGoal} onChangeText={setSetsGoal} /></View>
+                                    <View style={styles.inputStack}><Text style={styles.label}>REPS</Text><TextInput style={styles.mainInput} keyboardType="numeric" value={repsGoal} onChangeText={setRepsGoal} /></View>
+                                </View>
+                            ) : (
+                                <View>
+                                    <Text style={styles.label}>TIME (MINS)</Text>
+                                    <TextInput style={styles.mainInput} keyboardType="numeric" value={timeGoal} onChangeText={setTimeGoal} />
+                                    
+                                    <View style={styles.unitHeader}>
+                                         <Text style={styles.label}>{logMethod === 'distance' ? `DISTANCE (${unit})` : `SPEED (${unit === 'km' ? 'km/h' : 'mph'})`}</Text>
+                                         <TouchableOpacity onPress={() => setUnit(unit === 'km' ? 'mi' : 'km')}>
+                                            <Text style={styles.unitLink}>SWITCH TO {unit === 'km' ? 'MI' : 'KM'}</Text>
+                                         </TouchableOpacity>
+                                    </View>
+                                    <TextInput style={styles.mainInput} keyboardType="decimal-pad" value={logMethod === 'distance' ? distGoal : speedGoal} onChangeText={logMethod === 'distance' ? setDistGoal : setSpeedGoal} />
+                                    <Text style={styles.previewText}>{logMethod === 'distance' ? `Target Pace: ${calculatedPace}/${unit}` : `Required Distance: ${distFromSpeed} ${unit}`}</Text>
+                                </View>
+                            )}
+                        </View>
+
+                        <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.accentGreen }]} onPress={handleSaveGoal}>
+                            <Text style={styles.saveBtnText}>LOCK IN GOAL</Text>
+                        </TouchableOpacity>
+
+                        {/* SECTION 4: COMPLETED MILESTONES */}
+{completedGoals.length > 0 && (
+    <View style={[styles.section, { marginTop: 40 }]}>
+        <Text style={[styles.hudTitle, { color: '#FFD700' }]}>COMPLETED MILESTONES</Text>
+        {completedGoals.map((goal) => (
+            <View key={goal.id} style={styles.completedCard}>
+                <View style={styles.completedIcon}>
+                    <Ionicons name="checkmark-circle" size={20} color="#FFD700" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 15 }}>
+                    <Text style={styles.completedTitle}>{goal.activity}</Text>
+                    <Text style={styles.completedSub}>
+                        {goal.category === 'strength' 
+                            ? `Lifted ${goal.load}kg • ${new Date(goal.date?.seconds * 1000).toLocaleDateString()}`
+                            : `Finished in ${goal.duration}m • ${new Date(goal.date?.seconds * 1000).toLocaleDateString()}`}
+                    </Text>
+                </View>
+                <Ionicons name="ribbon-outline" size={20} color="rgba(255, 215, 0, 0.3)" />
+            </View>
+        ))}
+    </View>
+)}
+
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            {/* PICKER MODAL */}
-            <Modal visible={pickerVisible} transparent animationType="slide">
+            <Modal visible={pickerVisible} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
-                    <TouchableOpacity style={{flex: 1}} onPress={() => setPickerVisible(false)} />
-                    <View style={[styles.modalSheet, { backgroundColor: cardBg }]}>
+                    <View style={styles.modalSheet}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>ACTIVITY</Text>
+                            <TouchableOpacity onPress={() => setPickerVisible(false)}><Ionicons name="close" size={24} color="#fff" /></TouchableOpacity>
+                        </View>
+                        <View style={styles.modalAddRow}>
+                            <TextInput style={styles.modalInput} placeholder="New Activity..." placeholderTextColor="#444" value={newActivityName} onChangeText={setNewActivityName} />
+                            <TouchableOpacity onPress={() => { if(!newActivityName) return; setActivity(newActivityName); setIsAddingNew(true); setPickerVisible(false); }}>
+                                <Ionicons name="add-circle" size={40} color={colors.accentGreen} />
+                            </TouchableOpacity>
+                        </View>
                         <ScrollView>
                             {dropdownOptions.map((opt) => (
                                 <TouchableOpacity key={opt} style={styles.modalItem} onPress={() => { setActivity(opt); setIsAddingNew(false); setPickerVisible(false); }}>
-                                    <Text style={[styles.modalItemText, { color: textColor }]}>{opt}</Text>
+                                    <Text style={styles.modalItemText}>{opt}</Text>
                                 </TouchableOpacity>
                             ))}
-                            <TouchableOpacity style={styles.modalItem} onPress={() => { setIsAddingNew(true); setActivity(''); setPickerVisible(false); }}>
-                                <Text style={[styles.modalItemText, { color: '#007AFF', fontWeight: 'bold' }]}>+ Custom Activity</Text>
-                            </TouchableOpacity>
                         </ScrollView>
                     </View>
                 </View>
@@ -261,28 +298,83 @@ export default function GoalsPage() {
 }
 
 const styles = StyleSheet.create({
-    sectionHeader: { fontSize: 20, fontWeight: '900', marginBottom: 15 },
-    activeCard: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 10, alignItems: 'center' },
-    activeTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-    activeSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
-    card: { padding: 22, borderRadius: 24, elevation: 4 },
-    title: { fontSize: 20, fontWeight: '800', marginBottom: 15, textAlign: 'center' },
-    toggleRow: { flexDirection: 'row', padding: 4, borderRadius: 12 },
-    toggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
-    row: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
-    inputWrap: { flex: 0.31 },
-    label: { fontSize: 10, color: '#8e8e93', marginBottom: 5, fontWeight: 'bold' },
-    input: { padding: 12, borderRadius: 10, textAlign: 'center', fontWeight: 'bold' },
-    picker: { padding: 16, borderRadius: 14, alignItems: 'center' },
-    btn: { padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 20 },
-    btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-    miniLabel: { fontSize: 10, fontWeight: 'bold', color: '#8e8e93', marginBottom: 5 },
-    mileCard: { flexDirection: 'row', padding: 15, borderRadius: 18, marginBottom: 10, alignItems: 'center' },
-    mileTitle: { fontSize: 16, fontWeight: 'bold' },
-    mileSub: { fontSize: 12, color: '#8e8e93' },
-    mileStat: { fontSize: 16, fontWeight: '900', color: '#c75434' },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    modalSheet: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, maxHeight: '70%' },
-    modalItem: { paddingVertical: 18, borderBottomWidth: 0.5, borderBottomColor: '#eee' },
-    modalItemText: { fontSize: 18, textAlign: 'center' }
+    completedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 215, 0, 0.05)', // Very subtle gold tint
+    padding: 15,
+    borderRadius: 18,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.1)', // Subtle gold border
+},
+completedIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+},
+completedTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 'bold',
+    opacity: 0.9,
+},
+completedSub: {
+    color: '#8e8e93',
+    fontSize: 11,
+    marginTop: 2,
+},
+    safeArea: { flex: 1, backgroundColor: '#000' },
+    scrollContent: { padding: 20 },
+    
+    // HUD STYLES
+    hudContainer: { marginBottom: 30 },
+    hudTitle: { color: '#a7ff83', fontSize: 12, fontWeight: '900', letterSpacing: 2, marginBottom: 12, marginLeft: 5 },
+    hudCard: { flexDirection: 'row', backgroundColor: 'rgba(26, 46, 37, 0.3)', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#1a2e25' },
+    hudBox: { flex: 1, alignItems: 'center' },
+    hudLabel: { color: '#666', fontSize: 10, fontWeight: 'bold', marginBottom: 5 },
+    hudInput: { color: '#fff', fontSize: 28, fontWeight: '900', textAlign: 'center' },
+    hudSub: { color: '#444', fontSize: 9, fontWeight: 'bold', marginTop: 4 },
+    hudDivider: { width: 1, backgroundColor: '#1a2e25', marginHorizontal: 15 },
+
+    // QUEST CARDS
+    section: { marginBottom: 30 },
+    questCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0f0d', padding: 15, borderRadius: 18, marginBottom: 10, borderWidth: 1 },
+    questIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    questTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+    questSub: { color: '#8e8e93', fontSize: 12, marginTop: 2 },
+
+    // MAIN CONSOLE
+    mainCard: { backgroundColor: '#0a0f0d', padding: 25, borderRadius: 32, borderWidth: 1.5, borderColor: '#1a2e25', shadowColor: '#000', shadowOffset: {width: 0, height: 10}, shadowOpacity: 0.5, shadowRadius: 20 },
+    mainCardTitle: { color: '#fff', fontSize: 18, fontWeight: '900', textAlign: 'center', marginBottom: 20, letterSpacing: 1 },
+    toggleRow: { flexDirection: 'row', backgroundColor: '#000', padding: 5, borderRadius: 16, marginBottom: 15 },
+    toggleBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12 },
+    toggleText: { color: '#fff', fontSize: 11, fontWeight: '900' },
+    selector: { backgroundColor: '#000', padding: 18, borderRadius: 15, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: '#1a2e25' },
+    methodRow: { flexDirection: 'row', marginTop: 15, gap: 10 },
+    mBtn: { flex: 1, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#1a2e25', alignItems: 'center' },
+    mBtnActive: { backgroundColor: 'rgba(167, 255, 131, 0.1)', borderColor: '#a7ff83' },
+    mText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+    inputRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    inputStack: { flex: 0.31 },
+    label: { color: '#666', fontSize: 10, fontWeight: 'bold', marginBottom: 8, letterSpacing: 1 },
+    mainInput: { backgroundColor: '#000', color: '#fff', padding: 18, borderRadius: 15, fontSize: 18, fontWeight: 'bold', textAlign: 'center', borderWidth: 1, borderColor: '#1a2e25' },
+    unitHeader: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, alignItems: 'center' },
+    unitLink: { color: '#a7ff83', fontSize: 10, fontWeight: 'bold' },
+    previewText: { color: '#666', fontSize: 11, textAlign: 'center', marginTop: 10, fontStyle: 'italic' },
+    saveBtn: { padding: 20, borderRadius: 20, marginTop: 30, alignItems: 'center' },
+    saveBtnText: { color: '#000', fontWeight: '900', fontSize: 16 },
+
+    // MODAL
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'flex-end' },
+    modalSheet: { backgroundColor: '#0a0f0d', borderTopLeftRadius: 40, borderTopRightRadius: 40, padding: 30, maxHeight: '85%', borderWidth: 1, borderColor: '#1a2e25' },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
+    modalTitle: { color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 1 },
+    modalAddRow: { flexDirection: 'row', alignItems: 'center', gap: 15, marginBottom: 20 },
+    modalInput: { flex: 1, backgroundColor: '#000', padding: 15, borderRadius: 15, color: '#fff' },
+    modalItem: { paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: '#1a2e25' },
+    modalItemText: { color: '#fff', fontSize: 18, textAlign: 'center', fontWeight: '500' }
 });
