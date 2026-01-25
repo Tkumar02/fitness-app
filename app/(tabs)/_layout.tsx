@@ -43,6 +43,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ color }) => <Ionicons name="trending-up-outline" size={24} color={color} /> 
         }} 
       />
+
+      <Tabs.Screen 
+        name="CommunityFeed" // This must match your filename (e.g., community.tsx)
+        options={{ 
+          href: null, // This hides it from the bottom bar
+        }} 
+      />
     </Tabs>
   );
 }

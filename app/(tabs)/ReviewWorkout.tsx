@@ -18,13 +18,14 @@ import { UserContext } from '../../context/UserContext';
 export default function ReviewProgression() {
     const { user } = useContext(UserContext);
     const isDark = useColorScheme() === 'dark';
-    const webDateRef = useRef<any>(null); // For Web Calendar
+    const webDateRef = useRef<any>(null); 
     
     // States
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [workouts, setWorkouts] = useState<any[]>([]);
     const [activeGoals, setActiveGoals] = useState<any[]>([]);
+    const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
     
     // Filter States
     const [categoryFilter, setCategoryFilter] = useState<'all' | 'strength' | 'cardio'>('all');
@@ -52,8 +53,8 @@ export default function ReviewProgression() {
         accent: '#007AFF',
         success: '#34C759',
         gold: '#FFD700',
-        goldBg: isDark ? 'rgba(255, 215, 0, 0.1)' : 'rgba(255, 215, 0, 0.2)',
-        danger: '#FF3B30'
+        danger: '#FF3B30',
+        noteBg: isDark ? '#2c2c2e' : '#f2f2f7'
     };
 
     // 1. Sync Data
@@ -84,6 +85,10 @@ export default function ReviewProgression() {
         return '#FF3B30';
     };
 
+    const toggleNote = (id: string) => {
+        setExpandedNotes(prev => ({ ...prev, [id]: !prev[id] }));
+    };
+
     const filteredWorkouts = useMemo(() => {
         return workouts.filter(w => {
             const matchesCat = categoryFilter === 'all' || w.category === categoryFilter;
@@ -99,11 +104,8 @@ export default function ReviewProgression() {
 
     // 3. Handlers
     const handleDateTrigger = () => {
-        if (Platform.OS === 'web') {
-            webDateRef.current?.showPicker();
-        } else {
-            setShowDatePicker(true);
-        }
+        if (Platform.OS === 'web') webDateRef.current?.showPicker();
+        else setShowDatePicker(true);
     };
 
     const handleUpdate = async () => {
@@ -134,6 +136,7 @@ export default function ReviewProgression() {
     const renderWorkoutItem = ({ item }: { item: any }) => {
         const c1RM = item.category === 'strength' ? calculate1RM(item.weight, item.reps) : 0;
         const cVol = (Number(item.weight) * Number(item.reps) * Number(item.sets)) || 0;
+        const isNoteExpanded = expandedNotes[item.id];
 
         return (
             <View style={[styles.card, { backgroundColor: theme.card }]}>
@@ -147,7 +150,9 @@ export default function ReviewProgression() {
                         )}
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        {item.goalMet && <Text style={{marginRight: 10}}>🏆</Text>}
+                        {/* 🏆 GOAL MET ACCURACY check */}
+                        {item.goalMet && <Text style={{marginRight: 10, fontSize: 16}}>🏆</Text>}
+                        
                         <TouchableOpacity onPress={() => {
                             setEditingWorkout(item);
                             setEditSets(item.sets?.toString() || '');
@@ -159,7 +164,9 @@ export default function ReviewProgression() {
                         <TouchableOpacity onPress={() => handleDelete(item.id)}><Ionicons name="trash-outline" size={18} color={theme.subtext} /></TouchableOpacity>
                     </View>
                 </View>
+
                 <Text style={[styles.activityTitle, { color: theme.text }]}>{item.activity}</Text>
+                
                 <View style={styles.statsRow}>
                     {item.category === 'strength' ? (
                         <>
@@ -174,10 +181,30 @@ export default function ReviewProgression() {
                         </>
                     )}
                 </View>
-                {item.category === 'strength' && (
-                    <View style={[styles.performanceRow, { borderTopColor: isDark ? '#333' : '#eee' }]}>
-                        <Text style={[styles.performanceText, { color: theme.subtext }]}>1RM: <Text style={{color: theme.text}}>{c1RM}kg</Text></Text>
-                        <Text style={[styles.performanceText, { color: theme.subtext }]}>Vol: <Text style={{color: theme.text}}>{cVol.toLocaleString()}kg</Text></Text>
+
+                <View style={[styles.performanceRow, { borderTopColor: isDark ? '#333' : '#eee' }]}>
+                    {item.category === 'strength' ? (
+                        <View style={{flexDirection: 'row', gap: 15}}>
+                            <Text style={[styles.performanceText, { color: theme.subtext }]}>1RM: <Text style={{color: theme.text}}>{c1RM}kg</Text></Text>
+                            <Text style={[styles.performanceText, { color: theme.subtext }]}>Vol: <Text style={{color: theme.text}}>{cVol.toLocaleString()}kg</Text></Text>
+                        </View>
+                    ) : (
+                        <Text style={[styles.performanceText, { color: theme.subtext }]}>Metric: <Text style={{color: theme.text}}>{item.metricValue || 'Logged'}</Text></Text>
+                    )}
+
+                    {/* 📝 NOTES TOGGLE BUTTON */}
+                    {item.notes && (
+                        <TouchableOpacity style={styles.notesBtn} onPress={() => toggleNote(item.id)}>
+                            <Text style={styles.notesBtnText}>{isNoteExpanded ? 'Hide' : 'Notes'}</Text>
+                            <Ionicons name={isNoteExpanded ? "chevron-up" : "document-text-outline"} size={14} color={theme.accent} />
+                        </TouchableOpacity>
+                    )}
+                </View>
+
+                {/* 📔 EXPANDABLE NOTES CONTENT */}
+                {isNoteExpanded && item.notes && (
+                    <View style={[styles.notesContent, { backgroundColor: theme.noteBg }]}>
+                        <Text style={[styles.notesText, { color: theme.text }]}>{item.notes}</Text>
                     </View>
                 )}
             </View>
@@ -191,12 +218,10 @@ export default function ReviewProgression() {
                 <View style={styles.container}>
                     <Text style={[styles.header, { color: theme.text }]}>Progression</Text>
 
-                    {/* HIDDEN WEB INPUT */}
                     {Platform.OS === 'web' && (
                         <input type="date" ref={webDateRef} style={{position:'absolute', opacity:0, zIndex:-1}} onChange={(e) => e.target.value && setSelectedDate(new Date(e.target.value))} />
                     )}
 
-                    {/* FILTERS */}
                     <View style={styles.toggleContainer}>
                         {(['all', 'strength', 'cardio'] as const).map((t) => (
                             <TouchableOpacity key={t} style={[styles.toggleBtn, categoryFilter === t && (isDark ? styles.activeToggleDark : styles.activeToggleLight)]} onPress={() => setCategoryFilter(t)}>
@@ -216,7 +241,6 @@ export default function ReviewProgression() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* CLEAR BANNER */}
                     {selectedDate && (
                         <TouchableOpacity style={styles.clearBanner} onPress={() => setSelectedDate(null)}>
                             <Text style={{color: '#fff', fontWeight: 'bold'}}>Showing {selectedDate.toLocaleDateString()} • Clear Filter ×</Text>
@@ -232,7 +256,7 @@ export default function ReviewProgression() {
                     />
                 </View>
 
-                {/* ACTIVITY PICKER */}
+                {/* ACTIVITY PICKER MODAL */}
                 <Modal visible={activityPickerVisible} transparent animationType="fade">
                     <TouchableOpacity style={styles.modalOverlay} onPress={() => setActivityPickerVisible(false)}>
                         <View style={[styles.modalSheet, { backgroundColor: theme.card }]}>
@@ -245,7 +269,6 @@ export default function ReviewProgression() {
                     </TouchableOpacity>
                 </Modal>
 
-                {/* MOBILE DATE PICKER */}
                 {Platform.OS !== 'web' && showDatePicker && (
                     <DateTimePicker value={selectedDate || new Date()} mode="date" onChange={(e, d) => { setShowDatePicker(false); if(d) setSelectedDate(d); }} />
                 )}
@@ -271,12 +294,25 @@ const styles = StyleSheet.create({
     statsRow: { flexDirection: 'row', gap: 20, marginTop: 10 },
     statLabel: { fontSize: 9, color: '#8e8e93', textTransform: 'uppercase' },
     statValue: { fontSize: 16, fontWeight: '800' },
-    performanceRow: { flexDirection: 'row', marginTop: 15, paddingTop: 10, borderTopWidth: 1, gap: 20 },
+    performanceRow: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginTop: 15, 
+        paddingTop: 10, 
+        borderTopWidth: 1 
+    },
     performanceText: { fontSize: 12, fontWeight: '600' },
     rpeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginLeft: 10 },
     rpeBadgeText: { fontSize: 10, fontWeight: '800' },
     clearBanner: { backgroundColor: '#007AFF', padding: 12, borderRadius: 12, marginBottom: 15, alignItems: 'center' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
     modalSheet: { width: '80%', borderRadius: 20, padding: 20, maxHeight: '70%' },
-    modalItem: { paddingVertical: 15, borderBottomWidth: 0.5, borderBottomColor: '#333' }
+    modalItem: { paddingVertical: 15, borderBottomWidth: 0.5, borderBottomColor: '#333' },
+    
+    // New Styles for Notes
+    notesBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    notesBtnText: { fontSize: 12, fontWeight: '800', color: '#007AFF' },
+    notesContent: { marginTop: 12, padding: 12, borderRadius: 12 },
+    notesText: { fontSize: 13, fontStyle: 'italic', lineHeight: 18 }
 });
