@@ -4,12 +4,22 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import React, { useContext } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { UserContext } from '../../context/UserContext';
 
 export default function LandingPage() {
-  const { user, setUser } = useContext(UserContext);
+  const { user, setUser, loading } = useContext(UserContext); // Add loading here
   const router = useRouter();
+
+  // If we are still checking the cache, show nothing or a spinner 
+  // to prevent the "Login buttons" from flashing
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: '#3b82f6' }]}>
+        <ActivityIndicator size="large" color="#ffffff" />
+      </View>
+    );
+  }
 
   const handleLogout = async () => {
     try {

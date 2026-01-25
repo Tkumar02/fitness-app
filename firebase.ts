@@ -1,13 +1,12 @@
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { getApp, getApps, initializeApp } from 'firebase/app';
+import { Auth, getAuth, initializeAuth } from 'firebase/auth'; // Added 'Auth' type
+import { getFirestore } from 'firebase/firestore';
+import { Platform } from 'react-native';
 
+// Import the problematic function via require
+const { getReactNativePersistence } = require('firebase/auth');
 
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
 const firebaseConfig = {
     apiKey: "AIzaSyDPoosMOlNfzhkieXVX2pKCAyYSE4e_KmE",
     authDomain: "activeme-lt3.firebaseapp.com",
@@ -17,36 +16,20 @@ const firebaseConfig = {
     appId: "1:618736235893:web:47fdd824adadd39e80cf3c"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
+// Explicitly type the auth variable so other files don't complain
+let auth: Auth; 
 
-// BELOW ARE THE SUGGESTED CHANGES TO FIX THE ERROR FOR LOGGING IN PERSISTENCE THING
+if (Platform.OS === 'web') {
+  auth = getAuth(app);
+} else {
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+  });
+}
 
+const db = getFirestore(app);
 
-// // firebase.ts
-// import { initializeApp } from 'firebase/app';
-// import { getFirestore } from "firebase/firestore";
-// import { initializeAuth, getReactNativePersistence } from 'firebase/auth'; // Back to standard path
-// import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+export { auth, db };
 
-// const firebaseConfig = {
-//   // ... your config
-// };
-
-// const app = initializeApp(firebaseConfig);
-
-// // THIS IS THE COMPATIBILITY FIX:
-// // Some versions of Firebase export it differently. 
-// // If getReactNativePersistence is undefined, we fall back to standard memory.
-// const persistence = getReactNativePersistence 
-//     ? getReactNativePersistence(ReactNativeAsyncStorage) 
-//     : undefined;
-
-// export const auth = initializeAuth(app, {
-//   persistence: persistence
-// });
-
-// export const db = getFirestore(app);
