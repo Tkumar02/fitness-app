@@ -28,10 +28,9 @@ export default function AddWorkoutPage() {
     const navigation = useNavigation<any>();
     const { user } = useContext(UserContext);
 
-    const colorScheme = useColorScheme(); // 'light' or 'dark'
+    const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
 
-    // Define a quick theme object
     const theme = {
         background: isDark ? '#000' : '#f2f2f7',
         card: isDark ? 'rgba(0,0,0,0.85)' : '#fff',
@@ -44,20 +43,17 @@ export default function AddWorkoutPage() {
     const [date, setDate] = useState(new Date());
     const [showDatePicker, setShowDatePicker] = useState(false);
 
-    // --- UI State ---
     const [loading, setLoading] = useState(false);
     const [workoutType, setWorkoutType] = useState<'cardio' | 'strength'>('cardio');
     const [unit, setUnit] = useState<'km' | 'mi'>('km');
     const [pickerVisible, setPickerVisible] = useState(false);
     
-    // --- Activity State ---
     const [activity, setActivity] = useState('');
     const [currentMetric, setCurrentMetric] = useState('DISTANCE');
     const [customList, setCustomList] = useState<any[]>([]);
     const [focus, setFocus] = useState<'endurance' | 'performance'>('endurance');
     const [isBodyweight, setIsBodyweight] = useState(false);
 
-    // --- Inputs ---
     const [duration, setDuration] = useState('');
     const [metricValue, setMetricValue] = useState(''); 
     const [weight, setWeight] = useState('');
@@ -78,7 +74,6 @@ export default function AddWorkoutPage() {
         });
     }, [user]);
 
-    // Calculation Logic
     const secondaryStats = useMemo(() => {
         const t = parseFloat(duration);
         const mVal = parseFloat(metricValue);
@@ -86,11 +81,9 @@ export default function AddWorkoutPage() {
         if (t > 0 && mVal > 0) {
             if (currentMetric === 'DISTANCE') {
                 if (focus === 'performance') {
-                    // Enter Speed -> Show Distance
                     const dist = (mVal * (t / 60)).toFixed(2);
                     return `Total Distance: ${dist} ${unit}`;
                 } else {
-                    // Enter Distance -> Show Pace
                     const paceDec = t / mVal;
                     const mins = Math.floor(paceDec);
                     const secs = Math.round((paceDec - mins) * 60);
@@ -102,11 +95,9 @@ export default function AddWorkoutPage() {
         }
         return '--';
     }, [metricValue, duration, currentMetric, unit, focus]);
+
 const handleWebDateChange = (val: string) => {
-    // Web inputs return a string "YYYY-MM-DD"
     const newDate = new Date(val);
-    
-    // Check if the date is valid before updating state
     if (!isNaN(newDate.getTime())) {
         setDate(newDate);
     }
@@ -128,7 +119,6 @@ const handleSaveWorkout = async () => {
     }
 
     try {
-        // 1. CHECK FOR GOALS
         const goalsRef = collection(db, 'users', user.uid, 'activeGoals');
         const q = query(goalsRef, where('activity', '==', activity));
         const goalSnap = await getDocs(q);
@@ -139,8 +129,7 @@ const handleSaveWorkout = async () => {
         goalSnap.forEach((doc) => {
             const goal = doc.data();
             if (workoutType === 'strength') {
-                const weightUsed = isBodyweight ? (parseFloat(weight) || 0) : (parseFloat(weight) || 0);
-                // Achieve if weight matches/exceeds AND reps match/exceed
+                const weightUsed = (parseFloat(weight) || 0);
                 if (weightUsed >= goal.loadGoal && parseInt(reps) >= goal.repsGoal) {
                     isGoalAchieved = true;
                     metGoalId = doc.id;
@@ -160,11 +149,10 @@ const handleSaveWorkout = async () => {
             }
         });
 
-        // 2. SAVE THE WORKOUT (ONE SINGLE CALL)
         await addDoc(collection(db, 'workouts'), {
             userId: user.uid,
             activity,
-            date: date.toISOString().split('T')[0], // Uses the state we just fixed
+            date: date.toISOString().split('T')[0],
             category: workoutType,
             metricType: currentMetric,
             metricValue: mVal,
@@ -180,32 +168,26 @@ const handleSaveWorkout = async () => {
             reps: parseInt(reps) || 0,
             rpe,
             notes,
-            goalMet: isGoalAchieved, // SAVE THE GOAL STATUS
+            goalMet: isGoalAchieved,
             achievedGoalId: metGoalId,
             createdAt: serverTimestamp(),
         });
 
-        // 3. DELETE THE GOAL IF ACHIEVED
         if (isGoalAchieved && metGoalId) {
             await deleteDoc(doc(db, 'users', user.uid, 'activeGoals', metGoalId));
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             if (Platform.OS === 'web') {
-        window.alert("Goal Achieved! 🎉");
-    } else {
-        Alert.alert("Goal Achieved! 🎉",
+                window.alert("Goal Achieved! 🎉");
+            } else {
+                Alert.alert("Goal Achieved! 🎉",
                 `Congratulations! You've officially smashed your goal for ${activity}.`,
                 [{ text: "Awesome!", onPress: () => navigation.navigate('ReviewWorkout') }]);
-    }
-           
-            } else {
-            // Standard haptic for regular workout save
+            }
+        } else {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             navigation.navigate('ReviewWorkout');
         }
 
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
-        // RESET STATE
         setLoading(false);
         setActivity(''); 
         setMetricValue('');
@@ -214,8 +196,6 @@ const handleSaveWorkout = async () => {
         setSets('');
         setReps('');
         setNotes('');
-        
-        navigation.navigate('ReviewWorkout');
 
     } catch (e) { 
         console.error(e);
@@ -225,9 +205,9 @@ const handleSaveWorkout = async () => {
 };
 
 const getRPEColor = (num: number) => {
-    if (num <= 3) return '#4ade80'; // Green
-    if (num <= 7) return '#facc15'; // Yellow/Gold
-    return '#f87171'; // Red
+    if (num <= 3) return '#4ade80';
+    if (num <= 7) return '#facc15';
+    return '#f87171';
 };
 
 const handleSelectActivity = (name: string, metric?: string) => {
@@ -245,28 +225,9 @@ const handleSelectActivity = (name: string, metric?: string) => {
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
                     <ScrollView contentContainerStyle={styles.container}>
     
-    {/* SINGLE CLEAN DYNAMIC HEADER */}
-    <View style={styles.header}>
-        <TouchableOpacity 
-            style={[
-                styles.unitToggle, 
-                workoutType === 'strength' && { borderColor: '#2b6cb0' } 
-            ]} 
-            onPress={() => {
-                if (workoutType === 'cardio') setUnit(unit === 'km' ? 'mi' : 'km');
-                else setWeightUnit(weightUnit === 'kg' ? 'lbs' : 'kg');
-            }}
-        >
-            <Text style={[
-                styles.unitToggleText, 
-                workoutType === 'strength' && { color: '#2b6cb0' }
-            ]}>
-                {workoutType === 'cardio' ? unit.toUpperCase() : weightUnit.toUpperCase()}
-            </Text>
-        </TouchableOpacity>
-    </View>
+    {/* HEADER WITHOUT TOP UNIT TOGGLE */}
+    <View style={styles.header} />
 
-{/* --- THE DATE PICKER SECTION --- */}
 <View style={{ marginBottom: 20 }}>
     <Text style={[styles.label, { color: theme.subtext }]}>WORKOUT DATE</Text>
     {Platform.OS === 'web' ? (
@@ -282,7 +243,7 @@ const handleSelectActivity = (name: string, metric?: string) => {
                 border: `1px solid ${theme.border}`,
                 fontSize: '18px',
                 width: '100%',
-                boxSizing: 'border-box', // Fixes the width "spilling over"
+                boxSizing: 'border-box',
                 outline: 'none',
                 fontFamily: 'inherit'
             }}
@@ -299,7 +260,6 @@ const handleSelectActivity = (name: string, metric?: string) => {
 </View>
 
     <View style={styles.card}>
-        {/* ... Tab Rows follow here ... */}
     <View style={styles.mainTabRow}>
         <TouchableOpacity style={[styles.mainTab, workoutType === 'strength' && styles.activeStrength]} onPress={() => { 
             setWorkoutType('strength'); 
@@ -320,7 +280,6 @@ const handleSelectActivity = (name: string, metric?: string) => {
         <Ionicons name="chevron-down" size={20} color="#fff" />
     </TouchableOpacity>
 
-    {/* --- CONDITIONAL UI: ONLY SHOW IF ACTIVITY IS SELECTED --- */}
     {!activity ? (
         <View style={styles.emptyState}>
             <Ionicons name="barbell-outline" size={40} color="#222" />
@@ -345,10 +304,20 @@ const handleSelectActivity = (name: string, metric?: string) => {
                     <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={duration} onChangeText={setDuration} />
 
                     <View style={{ marginTop: 20 }}>
-                        <Text style={styles.label}>
-                            {currentMetric !== 'DISTANCE' ? (currentMetric === 'FLOORS' ? 'TOTAL FLOORS' : 'INTENSITY LEVEL') : 
-                             (focus === 'performance' ? `SPEED (${unit === 'km' ? 'KM/H' : 'MPH'})` : `DISTANCE (${unit.toUpperCase()})`)}
-                        </Text>
+                        <View style={styles.labelWithToggle}>
+                            <Text style={styles.label}>
+                                {currentMetric !== 'DISTANCE' ? (currentMetric === 'FLOORS' ? 'TOTAL FLOORS' : 'INTENSITY LEVEL') : 
+                                 (focus === 'performance' ? `SPEED (${unit === 'km' ? 'KM/H' : 'MPH'})` : `DISTANCE`)}
+                            </Text>
+                            {currentMetric === 'DISTANCE' && (
+                                <TouchableOpacity 
+                                    style={styles.inlineUnitBtn} 
+                                    onPress={() => setUnit(unit === 'km' ? 'mi' : 'km')}
+                                >
+                                    <Text style={styles.inlineUnitText}>{unit.toUpperCase()}</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
                         <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={metricValue} onChangeText={setMetricValue} />
                     </View>
                     
@@ -361,10 +330,19 @@ const handleSelectActivity = (name: string, metric?: string) => {
                         <TouchableOpacity style={[styles.toggleBtn, isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(true)}><Text style={styles.toggleText}>BODYWEIGHT</Text></TouchableOpacity>
                     </View>
                     <View style={styles.strengthRow}>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.label}>
-                                {isBodyweight ? `+ ${weightUnit.toUpperCase()}` : weightUnit.toUpperCase()}
-                            </Text>
+                        <View style={{ flex: 1.2 }}>
+                            <View style={styles.labelWithToggle}>
+                                <Text style={styles.label}>{isBodyweight ? `+ LOAD` : `WEIGHT`}</Text>
+                                <TouchableOpacity 
+style={[
+        styles.inlineUnitBtn, 
+        { borderColor: '#2b6cb0' } // Matches Strength Blue
+    ]}                                    onPress={() => setWeightUnit(weightUnit === 'kg' ? 'lbs' : 'kg')}
+                                >
+<Text style={[styles.inlineUnitText, { color: '#63b3ed' }]}>
+        {weightUnit.toUpperCase()}
+    </Text>                                </TouchableOpacity>
+                            </View>
                             <TextInput 
                                 style={styles.input} 
                                 placeholder="0" 
@@ -379,7 +357,6 @@ const handleSelectActivity = (name: string, metric?: string) => {
                 </View>
             )}
 
-            {/* RPE and Notes only show if activity is selected too */}
             <Text style={[styles.label, { marginTop: 25 }]}>EFFORT (RPE: {rpe})</Text>
             <View style={styles.rpeRow}>
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
@@ -454,9 +431,7 @@ const handleSelectActivity = (name: string, metric?: string) => {
 
 const styles = StyleSheet.create({
     container: { padding: 20 },
-    header: { alignItems: 'flex-end', height: 40 },
-    unitToggle: { backgroundColor: 'rgba(255,255,255,0.05)', padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#333' },
-    unitToggleText: { color: '#888', fontWeight: 'bold', fontSize: 10 },
+    header: { height: 10 },
     card: { backgroundColor: 'rgba(0,0,0,0.85)', borderRadius: 30, padding: 25, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
     mainTabRow: { flexDirection: 'row', backgroundColor: '#000', borderRadius: 16, padding: 4, marginBottom: 25 },
     mainTab: { flex: 1, padding: 14, alignItems: 'center', borderRadius: 12 },
@@ -466,7 +441,10 @@ const styles = StyleSheet.create({
     pickerTrigger: { backgroundColor: '#000', padding: 20, borderRadius: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#222' },
     pickerLabel: { color: '#444', fontSize: 9, fontWeight: '900', marginBottom: 4 },
     pickerTriggerText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-    label: { color: '#555', fontSize: 10, fontWeight: '900', marginBottom: 8, letterSpacing: 1 },
+    label: { color: '#555', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+    labelWithToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    inlineUnitBtn: { backgroundColor: '#111', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#222' },
+    inlineUnitText: { color: '#a7ff83', fontSize: 10, fontWeight: '900' },
     toggleRow: { flexDirection: 'row', backgroundColor: '#000', borderRadius: 12, padding: 3, marginBottom: 15, borderWidth: 1, borderColor: '#111' },
     toggleBtn: { flex: 1, padding: 10, alignItems: 'center', borderRadius: 10 },
     toggleText: { color: '#fff', fontSize: 10, fontWeight: '900' },
@@ -494,17 +472,6 @@ const styles = StyleSheet.create({
     optionText: { color: '#fff', fontSize: 18 },
     optionSub: { color: '#444', fontSize: 10, fontWeight: 'bold' },
     closeBtn: { marginTop: 20, padding: 20, borderRadius: 15, alignItems: 'center', backgroundColor: '#111' },
-    emptyState: {
-    alignItems: 'center',
-    paddingVertical: 40,
-    opacity: 0.5
-},
-emptyStateText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 10,
-    letterSpacing: 1,
-    textTransform: 'uppercase'
-},
+    emptyState: { alignItems: 'center', paddingVertical: 40, opacity: 0.5 },
+    emptyStateText: { color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 10, letterSpacing: 1, textTransform: 'uppercase' },
 });
