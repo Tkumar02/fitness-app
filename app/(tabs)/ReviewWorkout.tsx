@@ -37,6 +37,7 @@ export default function ReviewProgression() {
     // Edit States
     const [editingWorkout, setEditingWorkout] = useState<any>(null);
     const [editModalVisible, setEditModalVisible] = useState(false);
+    const [editDate, setEditDate] = useState<string>('');
     const [editSets, setEditSets] = useState('');
     const [editReps, setEditReps] = useState('');
     const [editWeight, setEditWeight] = useState('');
@@ -44,6 +45,8 @@ export default function ReviewProgression() {
     const [editDistance, setEditDistance] = useState('');
     const [editIntensity, setEditIntensity] = useState('');
     const [editNotes, setEditNotes] = useState('');
+    const [editunit, setEditunit] = useState<'km' | 'mi'>('km');
+    const [editWeightUnit, setEditWeightUnit] = useState<'kg' | 'lbs'>('kg');
 
     const theme = {
         background: isDark ? '#121212' : '#f9fafb',
@@ -99,15 +102,23 @@ export default function ReviewProgression() {
 const handleUpdate = async () => {
     if (!editingWorkout) return;
     try {
-        await updateDoc(doc(db, 'workouts', editingWorkout.id), {
-            sets: Number(editSets) || 0,
-            reps: Number(editReps) || 0,
-            // If it's a BW exercise, we treat the weight input as "addedWeight"
-            weight: editingWorkout.isBW ? 0 : (Number(editWeight) || 0),
-            addedWeight: editingWorkout.isBW ? (Number(editWeight) || 0) : 0,
-            notes: editNotes,
-            updatedAt: serverTimestamp()
-        });
+await updateDoc(doc(db, 'workouts', editingWorkout.id), {
+    date: editDate, 
+    sets: Number(editSets) || 0,
+    reps: Number(editReps) || 0,
+    // Safely handles the units
+    ...(editingWorkout.category === 'strength' ? { weightUnit: editWeightUnit } : { unit: editunit }),
+    // Safely handles the weights
+    ...(editingWorkout.isBW 
+        ? { addedWeight: Number(editWeight) || 0, weight: 0 } 
+        : { weight: Number(editWeight) || 0, addedWeight: 0 }
+    ),
+    distance: Number(editDistance) || 0,
+    duration: Number(editDuration) || 0,
+    rpe: Number(editIntensity) || 0,
+    notes: editNotes,
+    updatedAt: serverTimestamp()
+});
         setEditModalVisible(false);
     } catch (e) { 
         Alert.alert("Error", "Update failed"); 
@@ -147,9 +158,12 @@ const handleUpdate = async () => {
                         {item.goalMet ? <Text style={{marginRight: 12}}>🏆</Text> : null}
                         <TouchableOpacity onPress={() => {
                             setEditingWorkout(item);
+                            setEditDate(item.date); // ADD THIS LINE
                             setEditSets(item.sets?.toString() || '');
                             setEditReps(item.reps?.toString() || '');
                             setEditWeight(item.weight?.toString() || '');
+                            setEditWeightUnit(item.weightUnit || 'kg')
+                            setEditunit(item.unit || 'km')
                             setEditDuration(item.duration?.toString() || '');
                             setEditDistance(item.distance?.toString() || '');
                             setEditIntensity(rpeValue?.toString() || '');
@@ -177,20 +191,29 @@ const handleUpdate = async () => {
             <Text style={styles.statLabel}>Weight</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={[styles.statValue, {color: theme.accent}]}>
-                    {item.isBW ? (
-                        item.addedWeight > 0 ? `BW + ${item.addedWeight}kg` : 'BW'
-                    ) : (
-                        `${item.weight}kg`
-                    )}
+{item.isBW ? (
+                item.addedWeight > 0 
+                    ? `BW + ${item.addedWeight}${item.weightUnit || 'kg'}` 
+                    : 'BW'
+            ) : (
+                `${item.weight}${item.weightUnit || 'kg'}`
+            )}
                 </Text>
             </View>
         </View>
     </>
 ) : (
-                        <>
-                            <View><Text style={styles.statLabel}>Min</Text><Text style={[styles.statValue, {color: theme.success}]}>{item.duration}</Text></View>
-                            <View><Text style={styles.statLabel}>Km</Text><Text style={[styles.statValue, {color: theme.success}]}>{item.distance}</Text></View>
-                        </>
+// Inside the cardio branch of renderWorkoutItem:
+<>
+    <View>
+        <Text style={styles.statLabel}>Min</Text>
+        <Text style={[styles.statValue, {color: theme.success}]}>{item.duration}</Text>
+    </View>
+    <View>
+        <Text style={styles.statLabel}>{item.unit?.toUpperCase() || 'KM'}</Text>
+        <Text style={[styles.statValue, {color: theme.success}]}>{item.distance}</Text>
+    </View>
+</>
                     )}
                 </View>
 
@@ -200,13 +223,13 @@ const handleUpdate = async () => {
                         <>
                             {/* ONLY SHOW IF GREATER THAN 0 */}
                             {c1RM > 0 && (
-                                <Text style={[styles.performanceText, { color: theme.subtext }]}>
-                                    1RM: <Text style={{ color: theme.text }}>{c1RM}kg</Text>
-                                </Text>
+<Text style={[styles.performanceText, { color: theme.text }]}>
+    1RM: {c1RM}{item.weightUnit || 'kg'}
+</Text>
                             )}
                             {totalVolume > 0 && (
                                 <Text style={[styles.performanceText, { color: theme.subtext }]}>
-                                    Vol: <Text style={{ color: theme.text }}>{totalVolume.toLocaleString()}kg</Text>
+                                    Vol: <Text style={{ color: theme.text }}>{totalVolume.toLocaleString()}{item.weightUnit || 'kg'}</Text>
                                 </Text>
                             )}
                             {/* IF BOTH ARE 0 (Standard BW), show a simple label */}
@@ -305,19 +328,106 @@ const handleUpdate = async () => {
                         <View style={[styles.editSheet, { backgroundColor: theme.card }]}>
                             <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Entry</Text>
                             <ScrollView showsVerticalScrollIndicator={false}>
+                                {/* DATE EDIT SECTION */}
+<Text style={styles.statLabel}>Workout Date</Text>
+<View style={{ marginBottom: 20 }}>
+    {Platform.OS === 'web' ? (
+        <input
+            type="date"
+            value={editDate}
+            onChange={(e) => setEditDate(e.target.value)}
+            style={{
+                backgroundColor: theme.inputBg,
+                color: theme.text,
+                padding: '15px',
+                borderRadius: '12px',
+                border: 'none',
+                fontSize: '16px',
+                width: '100%',
+                boxSizing: 'border-box',
+                outline: 'none',
+                fontFamily: 'inherit'
+            }}
+        />
+    ) : (
+        <>
+            <TouchableOpacity 
+                style={[styles.input, { backgroundColor: theme.inputBg, flexDirection: 'row', justifyContent: 'space-between' }]} 
+                onPress={() => setShowDatePicker(true)}
+            >
+                <Text style={{ color: theme.text }}>{editDate}</Text>
+                <Ionicons name="calendar-outline" size={20} color={theme.accent} />
+            </TouchableOpacity>
+            {showDatePicker && (
+                <DateTimePicker 
+                    value={new Date(editDate || new Date())} 
+                    mode="date" 
+                    display="default" 
+                    onChange={(e, d) => { 
+                        setShowDatePicker(false); 
+                        if(d) setEditDate(d.toISOString().split('T')[0]); 
+                    }} 
+                />
+            )}
+        </>
+    )}
+</View>
                                 {editingWorkout?.category === 'strength' ? (
                                     <View style={styles.editRow}>
                                         <View style={{flex:1}}><Text style={styles.statLabel}>Sets</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editSets} onChangeText={setEditSets} keyboardType="numeric" /></View>
-                                        <View style={{flex:1}}><Text style={styles.statLabel}>Reps</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editReps} onChangeText={setEditReps} keyboardType="numeric" /></View>
-                                        <View style={{flex:1}}><Text style={styles.statLabel}>Kg</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editWeight} onChangeText={setEditWeight} keyboardType="numeric" /></View>
-                                    </View>
+                                        <View style={{flex:1}}>
+                                            <Text style={styles.statLabel}>Reps</Text>
+                                            <TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editReps} onChangeText={setEditReps} keyboardType="numeric" />
+                                        </View>
+{/* Inside the Edit Modal Strength Row */}
+<View style={{flex:1}}>
+<TouchableOpacity 
+                onPress={() => setEditWeightUnit(editWeightUnit === 'kg' ? 'lbs' : 'kg')}
+                style={{
+                    backgroundColor: theme.accent + '20',
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 4,
+                    borderWidth: 1,
+                    borderColor: theme.accent
+                }}
+            >
+                <Text style={{ color: theme.accent, fontSize: 9, fontWeight: 'bold' }}>
+                    {editWeightUnit.toUpperCase()}
+                </Text>
+            </TouchableOpacity>    
+            <TextInput 
+        style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} 
+        value={editWeight} 
+        onChangeText={setEditWeight} 
+        keyboardType="numeric" 
+    />
+</View>                                   
+</View>
                                 ) : (
                                     <View style={styles.editRow}>
                                         <View style={{flex:1}}><Text style={styles.statLabel}>Min</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editDuration} onChangeText={setEditDuration} keyboardType="numeric" /></View>
-                                        <View style={{flex:1}}><Text style={styles.statLabel}>Km</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editDistance} onChangeText={setEditDistance} keyboardType="numeric" /></View>
-                                    </View>
-                                )}
-                                
+                                        <View style={{flex:1}}>
+                                            <TouchableOpacity 
+                                                onPress={() => setEditunit(editunit === 'km' ? 'mi' : 'km')}
+                                                    style={{
+                                                        backgroundColor: theme.accent + '20',
+                                                        paddingHorizontal: 6,
+                                                        paddingVertical: 2,
+                                                        borderRadius: 4,
+                                                        borderWidth: 1,
+                                                        borderColor: theme.accent
+                                                    }}
+                                                >
+                                                    <Text style={{ color: theme.accent, fontSize: 9, fontWeight: 'bold' }}>
+                                                        {editunit.toUpperCase()}
+                                                    </Text>
+                                                </TouchableOpacity>                                            
+                                                <TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editDistance} onChangeText={setEditDistance} keyboardType="numeric" />
+                                            </View>
+                                        </View>
+                                    )}
+                                                                            
                                 <Text style={styles.statLabel}>Intensity (RPE 1-10)</Text>
                                 <TextInput 
                                     style={[styles.input, { backgroundColor: editIntensity ? getRPEColor(Number(editIntensity)) + '15' : theme.inputBg, color: theme.text }]} 

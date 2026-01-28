@@ -7,7 +7,7 @@ import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, query, serverT
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView,
-    StyleSheet, Text, TextInput, TouchableOpacity, View
+    StyleSheet, Text, TextInput, TouchableOpacity, View, useColorScheme
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserContext } from '../../context/UserContext';
@@ -23,9 +23,26 @@ const DEFAULT_METRICS: Record<string, string> = {
     'Stairs': 'FLOORS', 'StairMaster': 'FLOORS', 'Elliptical': 'LEVEL', 'Rowing': 'DISTANCE',
 };
 
+
 export default function AddWorkoutPage() {
     const navigation = useNavigation<any>();
     const { user } = useContext(UserContext);
+
+    const colorScheme = useColorScheme(); // 'light' or 'dark'
+    const isDark = colorScheme === 'dark';
+
+    // Define a quick theme object
+    const theme = {
+        background: isDark ? '#000' : '#f2f2f7',
+        card: isDark ? 'rgba(0,0,0,0.85)' : '#fff',
+        text: isDark ? '#fff' : '#000',
+        subtext: isDark ? '#555' : '#8e8e93',
+        border: isDark ? '#222' : '#d1d1d6',
+        input: isDark ? '#000' : '#fff',
+    };
+
+    const [date, setDate] = useState(new Date());
+    const [showDatePicker, setShowDatePicker] = useState(false);
 
     // --- UI State ---
     const [loading, setLoading] = useState(false);
@@ -51,6 +68,7 @@ export default function AddWorkoutPage() {
 
     const [newActivityName, setNewActivityName] = useState('');
     const [selectedMetricForNew, setSelectedMetricForNew] = useState('DISTANCE');
+    const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
 
     useEffect(() => {
         if (!user?.uid) return;
@@ -84,6 +102,15 @@ export default function AddWorkoutPage() {
         }
         return '--';
     }, [metricValue, duration, currentMetric, unit, focus]);
+const handleWebDateChange = (val: string) => {
+    // Web inputs return a string "YYYY-MM-DD"
+    const newDate = new Date(val);
+    
+    // Check if the date is valid before updating state
+    if (!isNaN(newDate.getTime())) {
+        setDate(newDate);
+    }
+};
 
 const handleSaveWorkout = async () => {
     if (loading) return;
@@ -137,15 +164,17 @@ const handleSaveWorkout = async () => {
         await addDoc(collection(db, 'workouts'), {
             userId: user.uid,
             activity,
+            date: date.toISOString().split('T')[0], // Uses the state we just fixed
             category: workoutType,
             metricType: currentMetric,
             metricValue: mVal,
             distance: currentMetric === 'DISTANCE' ? finalDistance : null,
             duration: dur,
-            unit: currentMetric === 'DISTANCE' ? unit : null,
+            unit: workoutType === 'cardio' ? unit : null,            
             focus: workoutType === 'cardio' ? focus : null,
             weight: isBodyweight ? 0 : (parseFloat(weight) || 0),
             addedWeight: isBodyweight ? (parseFloat(weight) || 0) : 0,
+            weightUnit: workoutType === 'strength' ? weightUnit : null,
             isBW: isBodyweight,
             sets: parseInt(sets) || 0,
             reps: parseInt(reps) || 0,
@@ -153,7 +182,6 @@ const handleSaveWorkout = async () => {
             notes,
             goalMet: isGoalAchieved, // SAVE THE GOAL STATUS
             achievedGoalId: metGoalId,
-            date: new Date().toISOString().split('T')[0],
             createdAt: serverTimestamp(),
         });
 
@@ -196,17 +224,17 @@ const handleSaveWorkout = async () => {
     }
 };
 
-    const getRPEColor = (num: number) => {
+const getRPEColor = (num: number) => {
     if (num <= 3) return '#4ade80'; // Green
     if (num <= 7) return '#facc15'; // Yellow/Gold
     return '#f87171'; // Red
 };
 
-    const handleSelectActivity = (name: string, metric?: string) => {
-        setActivity(name);
-        setCurrentMetric(metric || DEFAULT_METRICS[name] || 'DISTANCE');
-        setPickerVisible(false);
-    };
+const handleSelectActivity = (name: string, metric?: string) => {
+    setActivity(name);
+    setCurrentMetric(metric || DEFAULT_METRICS[name] || 'DISTANCE');
+    setPickerVisible(false);
+};
 
     return (
         <LinearGradient 
@@ -216,16 +244,62 @@ const handleSaveWorkout = async () => {
             <SafeAreaView style={{ flex: 1 }}>
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
                     <ScrollView contentContainerStyle={styles.container}>
-                        
-                        <View style={styles.header}>
-                            {currentMetric === 'DISTANCE' && (
-                                <TouchableOpacity style={styles.unitToggle} onPress={() => setUnit(unit === 'km' ? 'mi' : 'km')}>
-                                    <Text style={styles.unitToggleText}>{unit.toUpperCase()}</Text>
-                                </TouchableOpacity>
-                            )}
-                        </View>
+    
+    {/* SINGLE CLEAN DYNAMIC HEADER */}
+    <View style={styles.header}>
+        <TouchableOpacity 
+            style={[
+                styles.unitToggle, 
+                workoutType === 'strength' && { borderColor: '#2b6cb0' } 
+            ]} 
+            onPress={() => {
+                if (workoutType === 'cardio') setUnit(unit === 'km' ? 'mi' : 'km');
+                else setWeightUnit(weightUnit === 'kg' ? 'lbs' : 'kg');
+            }}
+        >
+            <Text style={[
+                styles.unitToggleText, 
+                workoutType === 'strength' && { color: '#2b6cb0' }
+            ]}>
+                {workoutType === 'cardio' ? unit.toUpperCase() : weightUnit.toUpperCase()}
+            </Text>
+        </TouchableOpacity>
+    </View>
 
-                        <View style={styles.card}>
+{/* --- THE DATE PICKER SECTION --- */}
+<View style={{ marginBottom: 20 }}>
+    <Text style={[styles.label, { color: theme.subtext }]}>WORKOUT DATE</Text>
+    {Platform.OS === 'web' ? (
+        <input
+            type="date"
+            value={date.toISOString().split('T')[0]}
+            onChange={(e) => handleWebDateChange(e.target.value)}
+            style={{
+                backgroundColor: theme.input,
+                color: theme.text,
+                padding: '18px',
+                borderRadius: '15px',
+                border: `1px solid ${theme.border}`,
+                fontSize: '18px',
+                width: '100%',
+                boxSizing: 'border-box', // Fixes the width "spilling over"
+                outline: 'none',
+                fontFamily: 'inherit'
+            }}
+        />
+    ) : (
+        <TouchableOpacity 
+            style={[styles.pickerTrigger, { backgroundColor: theme.input, borderColor: theme.border }]} 
+            onPress={() => setShowDatePicker(true)}
+        >
+            <Text style={[styles.pickerTriggerText, { color: theme.text }]}>{date.toDateString()}</Text>
+            <Ionicons name="calendar-outline" size={20} color={theme.text} />
+        </TouchableOpacity>
+    )}
+</View>
+
+    <View style={styles.card}>
+        {/* ... Tab Rows follow here ... */}
     <View style={styles.mainTabRow}>
         <TouchableOpacity style={[styles.mainTab, workoutType === 'strength' && styles.activeStrength]} onPress={() => { 
             setWorkoutType('strength'); 
@@ -283,14 +357,22 @@ const handleSaveWorkout = async () => {
             ) : (
                 <View>
                     <View style={styles.toggleRow}>
-                        <TouchableOpacity style={[styles.toggleBtn, !isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(false)}><Text style={styles.toggleText}>KG</Text></TouchableOpacity>
+                        <TouchableOpacity style={[styles.toggleBtn, !isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(false)}><Text style={styles.toggleText}>LOAD</Text></TouchableOpacity>
                         <TouchableOpacity style={[styles.toggleBtn, isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(true)}><Text style={styles.toggleText}>BODYWEIGHT</Text></TouchableOpacity>
                     </View>
                     <View style={styles.strengthRow}>
                         <View style={{ flex: 1 }}>
-                            <Text style={styles.label}>{isBodyweight ? '+ KG' : 'KG'}</Text>
-                            <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={weight} onChangeText={setWeight} />
-                        </View>
+                            <Text style={styles.label}>
+                                {isBodyweight ? `+ ${weightUnit.toUpperCase()}` : weightUnit.toUpperCase()}
+                            </Text>
+                            <TextInput 
+                                style={styles.input} 
+                                placeholder="0" 
+                                placeholderTextColor="#222" 
+                                keyboardType="numeric" 
+                                value={weight} 
+                                onChangeText={setWeight} 
+                            />                        </View>
                         <View style={{ flex: 1 }}><Text style={styles.label}>SETS</Text><TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={sets} onChangeText={setSets} /></View>
                         <View style={{ flex: 1 }}><Text style={styles.label}>REPS</Text><TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={reps} onChangeText={setReps} /></View>
                     </View>
