@@ -350,26 +350,16 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
             }}
         />
     ) : (
-        <>
-            <TouchableOpacity 
-                style={[styles.input, { backgroundColor: theme.inputBg, flexDirection: 'row', justifyContent: 'space-between' }]} 
-                onPress={() => setShowDatePicker(true)}
-            >
-                <Text style={{ color: theme.text }}>{editDate}</Text>
-                <Ionicons name="calendar-outline" size={20} color={theme.accent} />
-            </TouchableOpacity>
-            {showDatePicker && (
-                <DateTimePicker 
-                    value={new Date(editDate || new Date())} 
-                    mode="date" 
-                    display="default" 
-                    onChange={(e, d) => { 
-                        setShowDatePicker(false); 
-                        if(d) setEditDate(d.toISOString().split('T')[0]); 
-                    }} 
-                />
-            )}
-        </>
+<>
+        <TouchableOpacity 
+            style={[styles.input, { backgroundColor: theme.inputBg, flexDirection: 'row', justifyContent: 'space-between' }]} 
+            onPress={() => setShowDatePicker(true)}
+        >
+            <Text style={{ color: theme.text }}>{editDate}</Text>
+            <Ionicons name="calendar-outline" size={20} color={theme.accent} />
+        </TouchableOpacity>
+        {/* WE REMOVED THE DUPLICATE DATETIMEPICKER FROM HERE */}
+    </>
     )}
 </View>
                                 {editingWorkout?.category === 'strength' ? (
@@ -455,14 +445,30 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                     </View>
                 </Modal>
 
-                {/* MOBILE DATE PICKER - REINSTATED */}
-                {Platform.OS !== 'web' && showDatePicker && (
-                    <DateTimePicker 
-                        value={selectedDate || new Date()} 
-                        mode="date" 
-                        onChange={(e, d) => { setShowDatePicker(false); if(d) setSelectedDate(d); }} 
-                    />
-                )}
+{/* MOBILE DATE PICKER - UPDATED LOGIC */}
+{Platform.OS !== 'web' && showDatePicker && (
+    <DateTimePicker 
+        value={
+            // If editing, use editDate; otherwise use filter date or today
+            editModalVisible 
+                ? new Date(editDate || new Date()) 
+                : (selectedDate || new Date())
+        } 
+        mode="date" 
+        onChange={(e, d) => { 
+            setShowDatePicker(false); 
+            if (d) {
+                if (editModalVisible) {
+                    // Update the workout being edited
+                    setEditDate(d.toISOString().split('T')[0]);
+                } else {
+                    // Update the page filter
+                    setSelectedDate(d);
+                }
+            }
+        }} 
+    />
+)}
             </SafeAreaView>
         </View>
     );

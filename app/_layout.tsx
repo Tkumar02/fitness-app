@@ -1,5 +1,4 @@
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { Ionicons } from '@expo/vector-icons';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
@@ -16,8 +15,18 @@ function RootLayoutContent() {
   const { loading: authLoading } = useContext(UserContext); // Get auth loading state
   
   const [fontsLoaded, fontError] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...Ionicons.font,
+    'SpaceMono': require('../assets/fonts/SpaceMono-Regular.ttf'),
+  
+  // The big ones
+  'ionicons': require('../assets/fonts/Ionicons.ttf'),
+  'Ionicons': require('../assets/fonts/Ionicons.ttf'),
+  
+  'Material Icons': require('../assets/fonts/MaterialIcons.ttf'),
+  'MaterialIcons': require('../assets/fonts/MaterialIcons.ttf'),
+
+  'MaterialCommunityIcons': require('../assets/fonts/MaterialCommunityIcons.ttf'),
+  
+  'FontAwesome': require('../assets/fonts/FontAwesome.ttf'),
   });
 
   useEffect(() => {

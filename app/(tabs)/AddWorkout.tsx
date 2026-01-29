@@ -1,5 +1,6 @@
 import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -329,31 +330,50 @@ const handleSelectActivity = (name: string, metric?: string) => {
                         <TouchableOpacity style={[styles.toggleBtn, !isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(false)}><Text style={styles.toggleText}>LOAD</Text></TouchableOpacity>
                         <TouchableOpacity style={[styles.toggleBtn, isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(true)}><Text style={styles.toggleText}>BODYWEIGHT</Text></TouchableOpacity>
                     </View>
-                    <View style={styles.strengthRow}>
-                        <View style={{ flex: 1.2 }}>
-                            <View style={styles.labelWithToggle}>
-                                <Text style={styles.label}>{isBodyweight ? `+ LOAD` : `WEIGHT`}</Text>
-                                <TouchableOpacity 
-style={[
-        styles.inlineUnitBtn, 
-        { borderColor: '#2b6cb0' } // Matches Strength Blue
-    ]}                                    onPress={() => setWeightUnit(weightUnit === 'kg' ? 'lbs' : 'kg')}
-                                >
-<Text style={[styles.inlineUnitText, { color: '#63b3ed' }]}>
-        {weightUnit.toUpperCase()}
-    </Text>                                </TouchableOpacity>
-                            </View>
-                            <TextInput 
-                                style={styles.input} 
-                                placeholder="0" 
-                                placeholderTextColor="#222" 
-                                keyboardType="numeric" 
-                                value={weight} 
-                                onChangeText={setWeight} 
-                            />                        </View>
-                        <View style={{ flex: 1 }}><Text style={styles.label}>SETS</Text><TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={sets} onChangeText={setSets} /></View>
-                        <View style={{ flex: 1 }}><Text style={styles.label}>REPS</Text><TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={reps} onChangeText={setReps} /></View>
-                    </View>
+    <View style={styles.strengthRow}>
+    {/* WEIGHT COLUMN */}
+    <View style={{ flex: 1.2 }}>
+        <View style={styles.labelWithToggle}>
+            <Text style={styles.label}>{isBodyweight ? `+ LOAD` : `WEIGHT`}</Text>
+            <TouchableOpacity 
+                style={[styles.inlineUnitBtn, { borderColor: '#2b6cb0' }]} 
+                onPress={() => setWeightUnit(weightUnit === 'kg' ? 'lbs' : 'kg')}
+            >
+                <Text style={[styles.inlineUnitText, { color: '#63b3ed' }]}>
+                    {weightUnit.toUpperCase()}
+                </Text>
+            </TouchableOpacity>
+        </View>
+        <TextInput 
+            style={styles.input} 
+            placeholder="0" 
+            placeholderTextColor="#222" 
+            keyboardType="numeric" 
+            value={weight} 
+            onChangeText={setWeight} 
+        />
+    </View>
+
+    {/* SETS COLUMN */}
+    <View style={{ flex: 1 }}>
+        <View style={styles.labelWithToggle}>
+            <Text style={styles.label}>SETS</Text>
+            {/* Empty View to match the height of the toggle button */}
+            <View style={{ height: 20 }} /> 
+        </View>
+        <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={sets} onChangeText={setSets} />
+    </View>
+
+    {/* REPS COLUMN */}
+    <View style={{ flex: 1 }}>
+        <View style={styles.labelWithToggle}>
+            <Text style={styles.label}>REPS</Text>
+            {/* Empty View to match the height of the toggle button */}
+            <View style={{ height: 20 }} />
+        </View>
+        <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={reps} onChangeText={setReps} />
+    </View>
+</View>
                 </View>
             )}
 
@@ -425,6 +445,20 @@ style={[
                     </View>
                 </View>
             </Modal>
+            {/* MOBILE DATE PICKER */}
+{Platform.OS !== 'web' && showDatePicker && (
+    <DateTimePicker 
+        value={date} 
+        mode="date" 
+        display="default"
+        onChange={(event, selectedDate) => {
+            setShowDatePicker(false); // Close the picker
+            if (selectedDate) {
+                setDate(selectedDate); // Update the state
+            }
+        }} 
+    />
+)}
         </LinearGradient>
     );
 }
@@ -442,7 +476,7 @@ const styles = StyleSheet.create({
     pickerLabel: { color: '#444', fontSize: 9, fontWeight: '900', marginBottom: 4 },
     pickerTriggerText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
     label: { color: '#555', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-    labelWithToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    labelWithToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, minHeight: 24 },
     inlineUnitBtn: { backgroundColor: '#111', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#222' },
     inlineUnitText: { color: '#a7ff83', fontSize: 10, fontWeight: '900' },
     toggleRow: { flexDirection: 'row', backgroundColor: '#000', borderRadius: 12, padding: 3, marginBottom: 15, borderWidth: 1, borderColor: '#111' },
@@ -451,13 +485,13 @@ const styles = StyleSheet.create({
     input: { backgroundColor: '#000', padding: 18, borderRadius: 15, color: '#fff', fontSize: 22, fontWeight: 'bold', borderWidth: 1, borderColor: '#111' },
     resBox: { marginTop: 15, padding: 15, backgroundColor: 'rgba(167, 255, 131, 0.05)', borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#1a2e25' },
     resVal: { color: '#a7ff83', fontWeight: 'bold', fontSize: 13 },
-    strengthRow: { flexDirection: 'row', gap: 12 },
+    strengthRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', width: '100%' },
     rpeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
     rpeCircle: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#222' },
     rpeText: { color: '#555', fontSize: 11, fontWeight: 'bold' },
     notesInput: { backgroundColor: '#000', padding: 15, borderRadius: 15, color: '#fff', minHeight: 80, textAlignVertical: 'top', borderWidth: 1, borderColor: '#111', marginTop: 5 },
     saveBtn: { backgroundColor: '#fff', padding: 22, borderRadius: 20, marginTop: 30, minHeight: 65, justifyContent: 'center' },
-    saveBtnText: { color: '#000', fontWeight: '900', fontSize: 16 },
+    saveBtnText: { color: '#000', fontWeight: '900', fontSize: 16, textAlign:'center' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'flex-end' },
     modalContent: { backgroundColor: '#0a0a0a', borderTopLeftRadius: 40, borderTopRightRadius: 40, padding: 30, maxHeight: '90%' },
     modalTitle: { color: '#a7ff83', fontSize: 10, fontWeight: '900', textAlign: 'center', marginBottom: 20 },
