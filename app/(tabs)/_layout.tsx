@@ -37,6 +37,13 @@ export default function TabsLayout() {
         }} 
       />
       <Tabs.Screen 
+        name="TemplateList" 
+        options={{ 
+          title: 'Regimes', 
+          tabBarIcon: ({ color }) => <Ionicons name="bag-handle-outline" size={24} color={color} /> 
+        }} 
+      />
+      <Tabs.Screen 
         name="ProgressionCharts" 
         options={{ 
           title: 'Analytics', 
@@ -46,6 +53,13 @@ export default function TabsLayout() {
 
       <Tabs.Screen 
         name="CommunityFeed" // This must match your filename (e.g., community.tsx)
+        options={{ 
+          href: null, // This hides it from the bottom bar
+        }} 
+      />
+
+      <Tabs.Screen 
+        name="CreateRegime" // This must match your filename (e.g., community.tsx)
         options={{ 
           href: null, // This hides it from the bottom bar
         }} 
