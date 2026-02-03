@@ -107,13 +107,20 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
     sets: Number(editSets) || 0,
     reps: Number(editReps) || 0,
     // Safely handles the units
-    ...(editingWorkout.category === 'strength' ? { weightUnit: editWeightUnit } : { unit: editunit }),
-    // Safely handles the weights
-    ...(editingWorkout.isBW 
-        ? { addedWeight: Number(editWeight) || 0, weight: 0 } 
-        : { weight: Number(editWeight) || 0, addedWeight: 0 }
-    ),
-    distance: Number(editDistance) || 0,
+    // Updated save logic to handle cardio metrics correctly
+    ...(editingWorkout.category === 'strength' ? { 
+        weightUnit: editWeightUnit,
+        sets: Number(editSets) || 0,
+        reps: Number(editReps) || 0,
+        ...(editingWorkout.isBW 
+            ? { addedWeight: Number(editWeight) || 0, weight: 0 } 
+            : { weight: Number(editWeight) || 0, addedWeight: 0 })
+    } : { 
+        // Cardio Save Logic
+        ...(editingWorkout.metricType === 'DISTANCE' 
+            ? { distance: Number(editDistance) || 0, unit: editunit } 
+            : { metricValue: Number(editDistance) || 0 })
+    }),
     duration: Number(editDuration) || 0,
     rpe: Number(editIntensity) || 0,
     notes: editNotes,
@@ -165,10 +172,11 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                             setEditWeightUnit(item.weightUnit || 'kg')
                             setEditunit(item.unit || 'km')
                             setEditDuration(item.duration?.toString() || '');
-                            setEditDistance(item.distance?.toString() || '');
                             setEditIntensity(rpeValue?.toString() || '');
                             setEditNotes(item.notes || ''); 
                             setEditModalVisible(true);
+                            const displayValue = item.metricType === 'DISTANCE' ? item.distance : item.metricValue;
+    setEditDistance(displayValue?.toString() || '');
                         }}><Ionicons name="create-outline" size={20} color={theme.accent} style={{marginRight: 15}} /></TouchableOpacity>
                         <TouchableOpacity onPress={() => handleDelete(item.id)}><Ionicons name="trash-outline" size={18} color={theme.subtext} /></TouchableOpacity>
                     </View>
@@ -209,10 +217,16 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
         <Text style={styles.statLabel}>Min</Text>
         <Text style={[styles.statValue, {color: theme.success}]}>{item.duration}</Text>
     </View>
-    <View>
-        <Text style={styles.statLabel}>{item.unit?.toUpperCase() || 'KM'}</Text>
-        <Text style={[styles.statValue, {color: theme.success}]}>{item.distance}</Text>
-    </View>
+ <View>
+     <Text style={styles.statLabel}>
+         {/* Use metricType (FLOORS/LEVEL) if it exists, otherwise default to unit (KM/MI) */}
+         {item.metricType && item.metricType !== 'DISTANCE' ? item.metricType : (item.unit?.toUpperCase() || 'KM')}
+     </Text>
+     <Text style={[styles.statValue, {color: theme.success}]}>
+         {/* Logical OR: Show metricValue if it exists (>0), otherwise show distance */}
+         {(item.metricValue > 0 ? item.metricValue : item.distance) || 0}
+     </Text>
+ </View>
 </>
                     )}
                 </View>
@@ -398,22 +412,36 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                                     <View style={styles.editRow}>
                                         <View style={{flex:1}}><Text style={styles.statLabel}>Min</Text><TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editDuration} onChangeText={setEditDuration} keyboardType="numeric" /></View>
                                         <View style={{flex:1}}>
-                                            <TouchableOpacity 
-                                                onPress={() => setEditunit(editunit === 'km' ? 'mi' : 'km')}
-                                                    style={{
-                                                        backgroundColor: theme.accent + '20',
-                                                        paddingHorizontal: 6,
-                                                        paddingVertical: 2,
-                                                        borderRadius: 4,
-                                                        borderWidth: 1,
-                                                        borderColor: theme.accent
-                                                    }}
-                                                >
-                                                    <Text style={{ color: theme.accent, fontSize: 9, fontWeight: 'bold' }}>
-                                                        {editunit.toUpperCase()}
-                                                    </Text>
-                                                </TouchableOpacity>                                            
-                                                <TextInput style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} value={editDistance} onChangeText={setEditDistance} keyboardType="numeric" />
+                                              {/* NEW LOGIC: Only show unit toggle if it is a DISTANCE workout */}
+       {editingWorkout?.metricType === 'DISTANCE' ? (
+           <TouchableOpacity 
+               onPress={() => setEditunit(editunit === 'km' ? 'mi' : 'km')}
+               style={{
+                   backgroundColor: theme.accent + '20',
+                   paddingHorizontal: 6,
+                   paddingVertical: 2,
+                   borderRadius: 4,
+                   borderWidth: 1,
+                   borderColor: theme.accent,
+                   alignSelf: 'flex-start',
+                   marginBottom: 4
+               }}
+           >
+               <Text style={{ color: theme.accent, fontSize: 9, fontWeight: 'bold' }}>
+                   {editunit.toUpperCase()} ⇅
+               </Text>
+           </TouchableOpacity>
+       ) : (
+           /* If it's Floors or Level, just show the label */
+           <Text style={styles.statLabel}>{editingWorkout?.metricType || 'METRIC'}</Text>
+       )}
+
+       <TextInput 
+           style={[styles.input, {backgroundColor: theme.inputBg, color: theme.text}]} 
+           value={editDistance} 
+           onChangeText={setEditDistance} 
+           keyboardType="numeric" 
+       />
                                             </View>
                                         </View>
                                     )}

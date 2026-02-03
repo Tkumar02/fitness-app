@@ -111,7 +111,7 @@ export default function ProgressionCharts() {
             return 0;
         });
 
-        const intensityData = lastSix.map(d => Number(d.intensity) || 0);
+        const intensityData = lastSix.map(d => Number(d.intensity || d.rpe) || 0);
 
         // Determine which line to show in Strength mode
         const activeProgressData = (isStrength && viewMode === 'Volume') ? volumeData : rmData;

@@ -6,3 +6,4 @@
 
 
  firebase login:use email-for-this-project@gmail.com
+ firebase login:list
