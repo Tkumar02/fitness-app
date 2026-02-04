@@ -57,7 +57,25 @@ export default function ActiveRegime() {
     }
   }, [isFocused]);
 
-  if (!template) return null;
+  if (!template) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <Ionicons name="fitness-outline" size={80} color={theme.subtext} style={{ opacity: 0.5 }} />
+        <Text style={[styles.exName, { color: theme.text, fontSize: 24, marginTop: 20 }]}>
+          No Active Session
+        </Text>
+        <Text style={{ color: theme.subtext, textAlign: 'center', paddingHorizontal: 40, marginBottom: 30 }}>
+          Select a regime from your library or create a new one to start tracking your progress.
+        </Text>
+        <TouchableOpacity 
+          style={[styles.mainBtn, { backgroundColor: theme.accent, width: '80%' }]}
+          onPress={() => navigation.navigate('TemplateList')} // Ensure 'Templates' matches your tab name
+        >
+          <Text style={styles.btnText}>GO TO REGIMES</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  };
 
   const currentEx = template.exercises[exerciseIndex];
 
@@ -115,6 +133,8 @@ const handleFinishExercise = async () => {
         date: new Date().toLocaleDateString('en-GB'),
       });
 
+      navigation.setParams({ template: undefined });
+
       // 4. NAVIGATION
       if (Platform.OS === 'web') {
         // Simple browser alert for web
@@ -143,8 +163,23 @@ const handleFinishExercise = async () => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
             <Ionicons name="close-circle" size={32} color={theme.subtext} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: theme.text }]}>Active Session</Text>
-          <View style={{ width: 32 }} />
+<Text style={[styles.title, { color: theme.text, textAlign: 'center' }]}>
+  {template.name}{"\n"}
+  <Text 
+    style={{ 
+      fontSize: 20, 
+      fontWeight: '900', 
+      color: theme.success,
+      letterSpacing: 2,
+      // The Glow Properties:
+      textShadowColor: theme.success, 
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 10 
+    }}
+  >
+    ACTIVE
+  </Text>
+</Text>          <View style={{ width: 32 }} />
         </View>
 
         <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>

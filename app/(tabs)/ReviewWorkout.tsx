@@ -45,7 +45,7 @@ export default function ReviewProgression() {
     const [editDistance, setEditDistance] = useState('');
     const [editIntensity, setEditIntensity] = useState('');
     const [editNotes, setEditNotes] = useState('');
-    const [editunit, setEditunit] = useState<'km' | 'mi'>('km');
+    const [editunit, setEditunit] = useState<string>('km');
     const [editWeightUnit, setEditWeightUnit] = useState<'kg' | 'lbs'>('kg');
 
     const theme = {
@@ -118,8 +118,16 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
     } : { 
         // Cardio Save Logic
         ...(editingWorkout.metricType === 'DISTANCE' 
-            ? { distance: Number(editDistance) || 0, unit: editunit } 
-            : { metricValue: Number(editDistance) || 0 })
+            ? { 
+            // If it's a speed workout (includes /h), recalculate the hidden distance field
+            distance: editunit.includes('/h') 
+                ? Number((Number(editDistance) * (Number(editDuration) / 60)).toFixed(2)) 
+                : Number(editDistance), 
+            unit: editunit,
+            // Also update metricValue so the speed is preserved
+            metricValue: editunit.includes('/h') ? Number(editDistance) : 0
+          } 
+        : { metricValue: Number(editDistance) || 0 })
     }),
     duration: Number(editDuration) || 0,
     rpe: Number(editIntensity) || 0,
@@ -414,23 +422,35 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                                         <View style={{flex:1}}>
                                               {/* NEW LOGIC: Only show unit toggle if it is a DISTANCE workout */}
        {editingWorkout?.metricType === 'DISTANCE' ? (
-           <TouchableOpacity 
-               onPress={() => setEditunit(editunit === 'km' ? 'mi' : 'km')}
-               style={{
-                   backgroundColor: theme.accent + '20',
-                   paddingHorizontal: 6,
-                   paddingVertical: 2,
-                   borderRadius: 4,
-                   borderWidth: 1,
-                   borderColor: theme.accent,
-                   alignSelf: 'flex-start',
-                   marginBottom: 4
-               }}
-           >
-               <Text style={{ color: theme.accent, fontSize: 9, fontWeight: 'bold' }}>
-                   {editunit.toUpperCase()} ⇅
-               </Text>
-           </TouchableOpacity>
+<TouchableOpacity 
+    onPress={() => {
+        // 1. Identify if this is a performance (speed) workout based on 
+        // the INITIAL unit it had when you opened the modal.
+        const isSpeedWorkout = editingWorkout?.unit?.includes('/h');
+
+        if (isSpeedWorkout) {
+            // ONLY toggle between speed units
+            setEditunit(editunit === 'km/h' ? 'mph' : 'km/h');
+        } else {
+            // ONLY toggle between distance units
+            setEditunit(editunit === 'km' ? 'mi' : 'km');
+        }
+    }}
+    style={{
+        backgroundColor: theme.accent + '20',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: theme.accent,
+        alignSelf: 'flex-start',
+        marginBottom: 4
+    }}
+>
+    <Text style={{ color: theme.accent, fontSize: 9, fontWeight: 'bold' }}>
+        {editunit.toUpperCase()} ⇅
+    </Text>
+</TouchableOpacity>
        ) : (
            /* If it's Floors or Level, just show the label */
            <Text style={styles.statLabel}>{editingWorkout?.metricType || 'METRIC'}</Text>

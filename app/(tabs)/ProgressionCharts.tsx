@@ -1,5 +1,7 @@
 import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
@@ -59,6 +61,56 @@ export default function ProgressionCharts() {
         return () => unsubscribe();
     }, [user]);
 
+// Independent timeframe states
+const [runTimeframe, setRunTimeframe] = useState<'7' | '30' | 'All'>('30');
+const [cycleTimeframe, setCycleTimeframe] = useState<'7' | '30' | 'All'>('30');
+
+const toggleRunTimeframe = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setRunTimeframe(prev => prev === '7' ? '30' : prev === '30' ? 'All' : '7');
+};
+
+const toggleCycleTimeframe = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCycleTimeframe(prev => prev === '7' ? '30' : prev === '30' ? 'All' : '7');
+};
+
+const runningTotal = useMemo(() => {
+    const now = new Date();
+    let cutoffDate = new Date(0);
+
+    if (runTimeframe !== 'All') {
+        cutoffDate = new Date();
+        cutoffDate.setDate(now.getDate() - parseInt(runTimeframe));
+    }
+
+    return workouts
+        .filter(w => {
+            const isRunning = w.activity === 'Running' || w.activity === 'Treadmill';
+            return isRunning && new Date(w.date) >= cutoffDate;
+        })
+        .reduce((sum, current) => sum + (Number(current.distance) || 0), 0)
+        .toFixed(1); // One decimal place looks cleaner
+}, [workouts, runTimeframe]);
+
+const cyclingTotal = useMemo(() => {
+    const now = new Date();
+    let cutoffDate = new Date(0);
+
+    if (cycleTimeframe !== 'All') {
+        cutoffDate = new Date();
+        cutoffDate.setDate(now.getDate() - parseInt(cycleTimeframe));
+    }
+
+    return workouts
+        .filter(w => {
+            const isCycling = w.activity === 'Cycling';
+            return isCycling && new Date(w.date) >= cutoffDate;
+        })
+        .reduce((sum, current) => sum + (Number(current.distance) || 0), 0)
+        .toFixed(1); // One decimal place looks cleaner
+}, [workouts, cycleTimeframe]);
+
     const uniqueActivities = useMemo(() => {
         const completed = workouts.map(w => w.activity);
         return Array.from(new Set(completed)).sort();
@@ -73,6 +125,23 @@ export default function ProgressionCharts() {
         });
         return ['All', ...Array.from(new Set(vals))];
     }, [selectedActivity, workouts]);
+
+    // const last30DaysCyclingTotal = useMemo(() => {
+    //     const thirtyDaysAgo = new Date();
+    //     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    //     return workouts
+    //         .filter(w => {
+    //             const workoutDate = new Date(w.date);
+    //             // Match cardio + specific activity name + date range
+    //             return w.category === 'cardio' && 
+    //                 w.activity === 'Cycling' && 
+    //                 w.distance > 0 && 
+    //                 workoutDate >= thirtyDaysAgo;
+    //         })
+    //         .reduce((sum, current) => sum + (Number(current.distance) || 0), 0)
+    //         .toFixed(2);
+    // }, [workouts]);
 
     const processedCharts = useMemo(() => {
         let filtered = workouts.filter(w => w.activity === selectedActivity);
@@ -116,6 +185,7 @@ export default function ProgressionCharts() {
         // Determine which line to show in Strength mode
         const activeProgressData = (isStrength && viewMode === 'Volume') ? volumeData : rmData;
         const activeColor = (isStrength && viewMode === 'Volume') ? theme.volume : theme.accent;
+        
 
         return {
             labels,
@@ -138,10 +208,40 @@ export default function ProgressionCharts() {
     }
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
-            <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-                <Text style={[styles.header, { color: theme.text }]}>Analytics</Text>
+<SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
+    <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.header, { color: theme.text }]}>Analytics</Text>
+        
+<TouchableOpacity activeOpacity={0.8} onPress={toggleRunTimeframe} style={{ marginBottom: 15 }}>
+    <LinearGradient colors={['#FF3B3030', 'transparent']} style={[styles.totalDistanceCard, { borderColor: '#FF3B3040' }]}>
+        <View style={styles.iconCircle}>
+            <Ionicons name="footsteps" size={24} color="#FF3B30" />
+        </View>
+        <View style={{ flex: 1, marginLeft: 15 }}>
+            <Text style={[styles.statSubLabel, { color: '#FF3B30' }]}>
+                {runTimeframe === 'All' ? 'ALL TIME RUNNING' : `LAST ${runTimeframe} DAYS RUNNING`}
+            </Text>
+            <Text style={styles.statMainLabel}>{runningTotal} KM</Text>
+        </View>
+        <Ionicons name="refresh-outline" size={16} color="#FF3B30" style={{opacity: 0.3}} />
+    </LinearGradient>
+</TouchableOpacity>
 
+{/* CYCLING CARD */}
+<TouchableOpacity activeOpacity={0.8} onPress={toggleCycleTimeframe} style={{ marginBottom: 20 }}>
+    <LinearGradient colors={['#A542CC30', 'transparent']} style={[styles.totalDistanceCard, { borderColor: '#A542CC40' }]}>
+        <View style={[styles.iconCircle, { backgroundColor: '#A542CC20' }]}>
+            <Ionicons name="bicycle-outline" size={28} color="#A542CC" /> 
+        </View>
+        <View style={{ flex: 1, marginLeft: 15 }}>
+            <Text style={[styles.statSubLabel, { color: '#A542CC' }]}>
+                {cycleTimeframe === 'All' ? 'ALL TIME CYCLING' : `LAST ${cycleTimeframe} DAYS CYCLING`}
+            </Text>
+            <Text style={styles.statMainLabel}>{cyclingTotal} KM</Text>
+        </View>
+        <Ionicons name="refresh-outline" size={16} color="#A542CC" style={{opacity: 0.3}} />
+    </LinearGradient>
+</TouchableOpacity>
                 <View style={styles.filterRow}>
                     <TouchableOpacity style={[styles.filterBtn, { backgroundColor: theme.card }]} onPress={() => setActivityModalVisible(true)}>
                         <Text style={styles.filterLabel}>Activity</Text>
@@ -268,5 +368,36 @@ const styles = StyleSheet.create({
     modalSheet: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, maxHeight: '60%' },
     modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 20, textAlign: 'center' },
     modalItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 18, borderBottomWidth: 0.5, borderBottomColor: 'rgba(142,142,147,0.2)' },
-    modalItemText: { fontSize: 17 }
+    modalItemText: { fontSize: 17 },
+statsContainer: {
+        paddingHorizontal: 20,
+        marginTop: 10,
+        marginBottom: 20,
+    },
+    totalDistanceCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 20,
+        borderRadius: 24, // Extra rounded for a modern look
+        borderWidth: 1,
+        backgroundColor: 'rgba(0,0,0,0.3)',
+    },
+    iconCircle: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: '#FF3B3020',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    statSubLabel: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 1.5,
+    },
+    statMainLabel: {
+        color: '#fff',
+        fontSize: 36, // Bigger and bolder
+        fontWeight: '900',
+    }
 });

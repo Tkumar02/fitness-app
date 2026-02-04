@@ -159,7 +159,9 @@ const handleSaveWorkout = async () => {
             metricValue: mVal,
             distance: currentMetric === 'DISTANCE' ? finalDistance : null,
             duration: dur,
-            unit: workoutType === 'cardio' ? unit : null,            
+            unit: workoutType === 'cardio' 
+                ? (focus === 'performance' && currentMetric === 'DISTANCE' ? `${unit}/h` : unit) 
+                : null,            
             focus: workoutType === 'cardio' ? focus : null,
             weight: isBodyweight ? 0 : (parseFloat(weight) || 0),
             addedWeight: isBodyweight ? (parseFloat(weight) || 0) : 0,

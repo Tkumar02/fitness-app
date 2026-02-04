@@ -32,8 +32,8 @@ export default function TabsLayout() {
       <Tabs.Screen 
         name="ReviewWorkout" 
         options={{ 
-          title: 'Stats', 
-          tabBarIcon: ({ color }) => <Ionicons name="stats-chart" size={24} color={color} /> 
+          title: 'Progress', 
+          tabBarIcon: ({ color }) => <Ionicons name="trending-up-outline" size={24} color={color} /> 
         }} 
       />
       <Tabs.Screen 
@@ -41,13 +41,6 @@ export default function TabsLayout() {
         options={{ 
           title: 'Regimes', 
           tabBarIcon: ({ color }) => <Ionicons name="bag-handle-outline" size={24} color={color} /> 
-        }} 
-      />
-      <Tabs.Screen 
-        name="ProgressionCharts" 
-        options={{ 
-          title: 'Analytics', 
-          tabBarIcon: ({ color }) => <Ionicons name="trending-up-outline" size={24} color={color} /> 
         }} 
       />
 
@@ -64,6 +57,24 @@ export default function TabsLayout() {
           href: null, // This hides it from the bottom bar
         }} 
       />
+
+      <Tabs.Screen 
+        name="ActiveRegime" // This must match your filename (e.g., community.tsx)
+        options={{ 
+          title: 'Active regime', 
+          tabBarIcon: ({ color }) => <Ionicons name="body-outline" size={24} color={color} /> 
+        }} 
+      />
+
+      <Tabs.Screen 
+        name="ProgressionCharts" 
+        options={{ 
+          title: 'Analytics', 
+          tabBarIcon: ({ color }) => <Ionicons name="stats-chart" size={24} color={color} /> 
+        }} 
+      />
+
     </Tabs>
+
   );
 }
