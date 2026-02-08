@@ -64,6 +64,35 @@ export default function ProgressionCharts() {
 // Independent timeframe states
 const [runTimeframe, setRunTimeframe] = useState<'7' | '30' | 'All'>('30');
 const [cycleTimeframe, setCycleTimeframe] = useState<'7' | '30' | 'All'>('30');
+// 1. Add state at the top
+const [swimTimeframe, setSwimTimeframe] = useState<'7' | '30' | 'All'>('30');
+
+// 2. Add visibility check
+const hasSwimmingData = useMemo(() => {
+    return workouts.some(w => 
+        w.activity === 'Swimming' && (Number(w.distance) > 0)
+    );
+}, [workouts]);
+
+// 3. Add calculation logic
+const swimmingTotal = useMemo(() => {
+    const now = new Date();
+    let cutoffDate = new Date(0);
+    if (swimTimeframe !== 'All') {
+        cutoffDate = new Date();
+        cutoffDate.setDate(now.getDate() - parseInt(swimTimeframe));
+    }
+    return workouts
+        .filter(w => w.activity === 'Swimming' && new Date(w.date) >= cutoffDate)
+        .reduce((sum, current) => sum + (Number(current.distance) || 0), 0)
+        .toFixed(1);
+}, [workouts, swimTimeframe]);
+
+// 4. Add the toggle function
+const toggleSwimTimeframe = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSwimTimeframe(prev => prev === '7' ? '30' : prev === '30' ? 'All' : '7');
+};
 
 const toggleRunTimeframe = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -143,6 +172,20 @@ const cyclingTotal = useMemo(() => {
     //         .toFixed(2);
     // }, [workouts]);
 
+    const hasRunningData = useMemo(() => {
+    return workouts.some(w => 
+        (w.activity === 'Running' || w.activity === 'Treadmill') && 
+        (Number(w.distance) > 0)
+    );
+}, [workouts]);
+
+const hasCyclingData = useMemo(() => {
+    return workouts.some(w => 
+        w.activity === 'Cycling' && 
+        (Number(w.distance) > 0)
+    );
+}, [workouts]);
+
     const processedCharts = useMemo(() => {
         let filtered = workouts.filter(w => w.activity === selectedActivity);
         if (selectedVariation !== 'All') {
@@ -212,36 +255,85 @@ const cyclingTotal = useMemo(() => {
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={[styles.header, { color: theme.text }]}>Analytics</Text>
         
-<TouchableOpacity activeOpacity={0.8} onPress={toggleRunTimeframe} style={{ marginBottom: 15 }}>
-    <LinearGradient colors={['#FF3B3030', 'transparent']} style={[styles.totalDistanceCard, { borderColor: '#FF3B3040' }]}>
-        <View style={styles.iconCircle}>
-            <Ionicons name="footsteps" size={24} color="#FF3B30" />
-        </View>
-        <View style={{ flex: 1, marginLeft: 15 }}>
-            <Text style={[styles.statSubLabel, { color: '#FF3B30' }]}>
-                {runTimeframe === 'All' ? 'ALL TIME RUNNING' : `LAST ${runTimeframe} DAYS RUNNING`}
-            </Text>
-            <Text style={styles.statMainLabel}>{runningTotal} KM</Text>
-        </View>
-        <Ionicons name="refresh-outline" size={16} color="#FF3B30" style={{opacity: 0.3}} />
-    </LinearGradient>
-</TouchableOpacity>
+{/* RUNNING CARD - Only shows if data exists */}
+{hasRunningData && (
+    <TouchableOpacity activeOpacity={0.8} onPress={toggleRunTimeframe} style={{ marginBottom: 15 }}>
+        <LinearGradient 
+            colors={['#FF3B3030', 'transparent']} 
+            style={[styles.totalDistanceCard, { borderColor: '#FF3B3040' }]}
+        >
+            <View style={styles.iconCircle}>
+                <Ionicons name="walk" size={24} color="#FF3B30" />
+            </View>
+            <View style={{ flex: 1, marginLeft: 15 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={[styles.statSubLabel, { color: '#FF3B30' }]}>
+                        {runTimeframe === 'All' ? 'ALL TIME RUNNING' : `LAST ${runTimeframe} DAYS RUNNING`}
+                    </Text>
+                    <Ionicons name="refresh-outline" size={10} color="#FF3B30" style={{marginLeft: 5, opacity: 0.5}} />
+                </View>
+                <Text style={styles.statMainLabel}>{runningTotal} KM</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.1)" />
+        </LinearGradient>
+    </TouchableOpacity>
+)}
 
-{/* CYCLING CARD */}
-<TouchableOpacity activeOpacity={0.8} onPress={toggleCycleTimeframe} style={{ marginBottom: 20 }}>
-    <LinearGradient colors={['#A542CC30', 'transparent']} style={[styles.totalDistanceCard, { borderColor: '#A542CC40' }]}>
-        <View style={[styles.iconCircle, { backgroundColor: '#A542CC20' }]}>
-            <Ionicons name="bicycle-outline" size={28} color="#A542CC" /> 
-        </View>
-        <View style={{ flex: 1, marginLeft: 15 }}>
-            <Text style={[styles.statSubLabel, { color: '#A542CC' }]}>
-                {cycleTimeframe === 'All' ? 'ALL TIME CYCLING' : `LAST ${cycleTimeframe} DAYS CYCLING`}
-            </Text>
-            <Text style={styles.statMainLabel}>{cyclingTotal} KM</Text>
-        </View>
-        <Ionicons name="refresh-outline" size={16} color="#A542CC" style={{opacity: 0.3}} />
-    </LinearGradient>
-</TouchableOpacity>
+{/* CYCLING CARD - Only shows if data exists */}
+{hasCyclingData && (
+    <TouchableOpacity activeOpacity={0.8} onPress={toggleCycleTimeframe} style={{ marginBottom: 20 }}>
+        <LinearGradient 
+            colors={['#A542CC30', 'transparent']} 
+            style={[styles.totalDistanceCard, { borderColor: '#A542CC40' }]}
+        >
+            <View style={[styles.iconCircle, { backgroundColor: '#A542CC20' }]}>
+                <Ionicons name="bicycle-outline" size={28} color="#A542CC" /> 
+            </View>
+            <View style={{ flex: 1, marginLeft: 15 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={[styles.statSubLabel, { color: '#A542CC' }]}>
+                        {cycleTimeframe === 'All' ? 'ALL TIME CYCLING' : `LAST ${cycleTimeframe} DAYS CYCLING`}
+                    </Text>
+                    <Ionicons name="refresh-outline" size={10} color="#A542CC" style={{marginLeft: 5, opacity: 0.5}} />
+                </View>
+                <Text style={styles.statMainLabel}>{cyclingTotal} KM</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.1)" />
+        </LinearGradient>
+    </TouchableOpacity>
+)}
+
+{hasSwimmingData && (
+    <TouchableOpacity 
+        activeOpacity={0.8} 
+        onPress={toggleSwimTimeframe} 
+        style={{ marginBottom: 20 }}
+    >
+        <LinearGradient 
+            colors={['#007AFF30', 'transparent']} // Blue theme for water
+            style={[styles.totalDistanceCard, { borderColor: '#007AFF40' }]}
+        >
+            <View style={[styles.iconCircle, { backgroundColor: '#007AFF20' }]}>
+                <Ionicons name="water-outline" size={26} color="#007AFF" />
+            </View>
+            
+            <View style={{ flex: 1, marginLeft: 15 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={[styles.statSubLabel, { color: '#007AFF' }]}>
+                        {swimTimeframe === 'All' ? 'ALL TIME SWIMMING' : `LAST ${swimTimeframe} DAYS SWIMMING`}
+                    </Text>
+                    <Ionicons name="refresh-outline" size={10} color="#007AFF" style={{marginLeft: 5, opacity: 0.5}} />
+                </View>
+                <Text style={styles.statMainLabel}>
+                    {swimmingTotal} <Text style={{ fontSize: 16, color: '#8e8e93' }}>KM</Text>
+                </Text>
+            </View>
+            
+            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.1)" />
+        </LinearGradient>
+    </TouchableOpacity>
+)}
+
                 <View style={styles.filterRow}>
                     <TouchableOpacity style={[styles.filterBtn, { backgroundColor: theme.card }]} onPress={() => setActivityModalVisible(true)}>
                         <Text style={styles.filterLabel}>Activity</Text>

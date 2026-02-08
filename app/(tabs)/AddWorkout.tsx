@@ -17,10 +17,11 @@ const METRIC_TYPES = {
     DISTANCE: { label: 'DISTANCE', unitKey: 'unit' },
     FLOORS: { label: 'FLOORS', unitKey: 'fl' },
     LEVEL: { label: 'LEVEL/RESISTANCE', unitKey: 'lvl' },
+    LENGTHS: { label: 'LENGTHS', unitKey: 'len' },
 };
 
 const DEFAULT_METRICS: Record<string, string> = {
-    'Running': 'DISTANCE', 'Cycling': 'DISTANCE', 'Treadmill': 'DISTANCE',
+    'Running': 'DISTANCE', 'Cycling': 'DISTANCE', 'Treadmill': 'DISTANCE', 'Swimming': 'LENGTHS',
     'Stairs': 'FLOORS', 'StairMaster': 'FLOORS', 'Elliptical': 'LEVEL', 'Rowing': 'DISTANCE',
 };
 
@@ -28,6 +29,7 @@ const DEFAULT_METRICS: Record<string, string> = {
 export default function AddWorkoutPage() {
     const navigation = useNavigation<any>();
     const { user } = useContext(UserContext);
+    const [poolLength, setPoolLength] = useState('25'); // Default to standard 25m pool
 
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
@@ -114,9 +116,21 @@ const handleSaveWorkout = async () => {
     const mVal = parseFloat(metricValue) || 0;
     const dur = parseFloat(duration) || 0;
     
+    // let finalDistance = mVal; 
+    // if (workoutType === 'cardio' && currentMetric === 'DISTANCE' && focus === 'performance') {
+    //     finalDistance = parseFloat((mVal * (dur / 60)).toFixed(2));
+    // }
+
     let finalDistance = mVal; 
-    if (workoutType === 'cardio' && currentMetric === 'DISTANCE' && focus === 'performance') {
-        finalDistance = parseFloat((mVal * (dur / 60)).toFixed(2));
+    
+    if (workoutType === 'cardio') {
+        if (activity === 'Swimming') {
+            // Calculate distance: (Number of lengths * Pool Size) / 1000 to get KM
+            const meters = mVal * parseFloat(poolLength);
+            finalDistance = unit === 'km' ? meters / 1000 : (meters / 1000) * 0.621371;
+        } else if (currentMetric === 'DISTANCE' && focus === 'performance') {
+            finalDistance = parseFloat((mVal * (dur / 60)).toFixed(2));
+        }
     }
 
     try {
@@ -305,6 +319,36 @@ const handleSelectActivity = (name: string, metric?: string) => {
 
                     <Text style={styles.label}>TIME (MINUTES)</Text>
                     <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={duration} onChangeText={setDuration} />
+
+                    {activity === 'Swimming' && (
+    <View style={{ marginBottom: 20 }}>
+        <Text style={styles.label}>POOL LENGTH (METERS)</Text>
+        <View style={styles.toggleRow}>
+            {['25', '33', '50'].map(len => (
+                <TouchableOpacity 
+                    key={len} 
+                    style={[styles.toggleBtn, poolLength === len && styles.activeCardio]} 
+                    onPress={() => setPoolLength(len)}
+                >
+                    <Text style={styles.toggleText}>{len}M</Text>
+                </TouchableOpacity>
+            ))}
+        </View>
+    </View>
+)}
+
+<Text style={styles.label}>
+    {activity === 'Swimming' ? 'NUMBER OF LENGTHS' : 
+     currentMetric !== 'DISTANCE' ? (currentMetric === 'FLOORS' ? 'TOTAL FLOORS' : 'INTENSITY LEVEL') : 
+     (focus === 'performance' ? `SPEED (${unit === 'km' ? 'KM/H' : 'MPH'})` : `DISTANCE`)}
+</Text>
+<TextInput 
+    style={styles.input} 
+    placeholder="0" 
+    keyboardType="numeric" 
+    value={metricValue} 
+    onChangeText={setMetricValue} 
+/>
 
                     <View style={{ marginTop: 20 }}>
                         <View style={styles.labelWithToggle}>
