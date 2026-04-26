@@ -59,6 +59,7 @@ export default function AddWorkoutPage() {
 
     const [duration, setDuration] = useState('');
     const [metricValue, setMetricValue] = useState(''); 
+    const [intensity, setIntensity] = useState('');
     const [weight, setWeight] = useState('');
     const [sets, setSets] = useState('');
     const [reps, setReps] = useState('');
@@ -68,6 +69,7 @@ export default function AddWorkoutPage() {
     const [newActivityName, setNewActivityName] = useState('');
     const [selectedMetricForNew, setSelectedMetricForNew] = useState('DISTANCE');
     const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
+    const [strengthMetric, setStrengthMetric] = useState<'reps' | 'time'>('reps');
 
     useEffect(() => {
         if (!user?.uid) return;
@@ -85,19 +87,32 @@ export default function AddWorkoutPage() {
             if (currentMetric === 'DISTANCE') {
                 if (focus === 'performance') {
                     const dist = (mVal * (t / 60)).toFixed(2);
-                    return `Total Distance: ${dist} ${unit}`;
+                    const paceDec = 60 / mVal;
+                    const mins = Math.floor(paceDec);
+                    const secs = Math.round((paceDec - mins) * 60);
+                    return `Est. Distance: ${dist} ${unit} • Pace: ${mins}:${secs < 10 ? '0' : ''}${secs} /${unit}`;
                 } else {
                     const paceDec = t / mVal;
                     const mins = Math.floor(paceDec);
                     const secs = Math.round((paceDec - mins) * 60);
-                    return `Pace: ${mins}:${secs < 10 ? '0' : ''}${secs} /${unit}`;
+                    const speed = (60 / paceDec).toFixed(1);
+                    return `Pace: ${mins}:${secs < 10 ? '0' : ''}${secs} /${unit} • Speed: ${speed} ${unit === 'km' ? 'km/h' : 'mph'}`;
                 }
+            }
+            if (currentMetric === 'LENGTHS') {
+                const meters = mVal * parseFloat(poolLength);
+                const km = meters / 1000;
+                const dist = unit === 'km' ? km : km * 0.621371;
+                const paceDec = t / dist;
+                const mins = Math.floor(paceDec);
+                const secs = Math.round((paceDec - mins) * 60);
+                return `Total Distance: ${dist.toFixed(2)}${unit} • Pace: ${mins}:${secs < 10 ? '0' : ''}${secs}/${unit}`;
             }
             if (currentMetric === 'FLOORS') return `Rate: ${(mVal / t).toFixed(1)} fl/min`;
             return `Intensity: Level ${mVal}`;
         }
         return '--';
-    }, [metricValue, duration, currentMetric, unit, focus]);
+    }, [metricValue, duration, currentMetric, unit, focus, poolLength]);
 
 const handleWebDateChange = (val: string) => {
     const newDate = new Date(val);
@@ -171,7 +186,8 @@ const handleSaveWorkout = async () => {
             category: workoutType,
             metricType: currentMetric,
             metricValue: mVal,
-            distance: currentMetric === 'DISTANCE' ? finalDistance : null,
+            intensity: parseFloat(intensity) || 0,
+            distance: (currentMetric === 'DISTANCE' || currentMetric === 'LENGTHS') ? finalDistance : null,
             duration: dur,
             unit: workoutType === 'cardio' 
                 ? (focus === 'performance' && currentMetric === 'DISTANCE' ? `${unit}/h` : unit) 
@@ -180,6 +196,7 @@ const handleSaveWorkout = async () => {
             weight: isBodyweight ? 0 : (parseFloat(weight) || 0),
             addedWeight: isBodyweight ? (parseFloat(weight) || 0) : 0,
             weightUnit: workoutType === 'strength' ? weightUnit : null,
+            strengthMetric: workoutType === 'strength' ? strengthMetric : null,
             isBW: isBodyweight,
             sets: parseInt(sets) || 0,
             reps: parseInt(reps) || 0,
@@ -208,6 +225,7 @@ const handleSaveWorkout = async () => {
         setLoading(false);
         setActivity(''); 
         setMetricValue('');
+        setIntensity('');
         setDuration('');
         setWeight('');
         setSets('');
@@ -321,52 +339,54 @@ const handleSelectActivity = (name: string, metric?: string) => {
                     <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={duration} onChangeText={setDuration} />
 
                     {activity === 'Swimming' && (
-    <View style={{ marginBottom: 20 }}>
-        <Text style={styles.label}>POOL LENGTH (METERS)</Text>
-        <View style={styles.toggleRow}>
-            {['25', '33', '50'].map(len => (
-                <TouchableOpacity 
-                    key={len} 
-                    style={[styles.toggleBtn, poolLength === len && styles.activeCardio]} 
-                    onPress={() => setPoolLength(len)}
-                >
-                    <Text style={styles.toggleText}>{len}M</Text>
-                </TouchableOpacity>
-            ))}
-        </View>
-    </View>
-)}
-
-<Text style={styles.label}>
-    {activity === 'Swimming' ? 'NUMBER OF LENGTHS' : 
-     currentMetric !== 'DISTANCE' ? (currentMetric === 'FLOORS' ? 'TOTAL FLOORS' : 'INTENSITY LEVEL') : 
-     (focus === 'performance' ? `SPEED (${unit === 'km' ? 'KM/H' : 'MPH'})` : `DISTANCE`)}
-</Text>
-<TextInput 
-    style={styles.input} 
-    placeholder="0" 
-    keyboardType="numeric" 
-    value={metricValue} 
-    onChangeText={setMetricValue} 
-/>
+                        <View style={{ marginVertical: 20 }}>
+                            <Text style={styles.label}>POOL LENGTH (METERS)</Text>
+                            <View style={styles.toggleRow}>
+                                {['25', '33', '50'].map(len => (
+                                    <TouchableOpacity 
+                                        key={len} 
+                                        style={[styles.toggleBtn, poolLength === len && styles.activeCardio]} 
+                                        onPress={() => setPoolLength(len)}
+                                    >
+                                        <Text style={styles.toggleText}>{len}M</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+                    )}
 
                     <View style={{ marginTop: 20 }}>
                         <View style={styles.labelWithToggle}>
                             <Text style={styles.label}>
-                                {currentMetric !== 'DISTANCE' ? (currentMetric === 'FLOORS' ? 'TOTAL FLOORS' : 'INTENSITY LEVEL') : 
-                                 (focus === 'performance' ? `SPEED (${unit === 'km' ? 'KM/H' : 'MPH'})` : `DISTANCE`)}
+                                {activity === 'Swimming' ? 'NUMBER OF LENGTHS' : 
+                                 currentMetric !== 'DISTANCE' ? (currentMetric === 'FLOORS' ? 'TOTAL FLOORS' : 'INTENSITY LEVEL') : 
+                                 (focus === 'performance' ? `SPEED (${unit === 'km' ? 'KM/H' : 'MPH'})` : `DISTANCE (${unit.toUpperCase()})`)}
                             </Text>
-                            {currentMetric === 'DISTANCE' && (
+                            {currentMetric === 'DISTANCE' && activity !== 'Swimming' && (
                                 <TouchableOpacity 
                                     style={styles.inlineUnitBtn} 
                                     onPress={() => setUnit(unit === 'km' ? 'mi' : 'km')}
                                 >
-                                    <Text style={styles.inlineUnitText}>{unit.toUpperCase()}</Text>
+                                    <Text style={styles.inlineUnitText}>{unit.toUpperCase()} ⇅</Text>
                                 </TouchableOpacity>
                             )}
                         </View>
                         <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={metricValue} onChangeText={setMetricValue} />
                     </View>
+
+                    {currentMetric !== 'LEVEL' && (
+                        <View style={{ marginTop: 20 }}>
+                            <Text style={styles.label}>INTENSITY / LEVEL (OPTIONAL)</Text>
+                            <TextInput 
+                                style={styles.input} 
+                                placeholder="0" 
+                                placeholderTextColor="#222" 
+                                keyboardType="numeric" 
+                                value={intensity} 
+                                onChangeText={setIntensity} 
+                            />
+                        </View>
+                    )}
                     
                     <View style={styles.resBox}><Text style={styles.resVal}>{secondaryStats}</Text></View>
                 </View>
@@ -375,6 +395,10 @@ const handleSelectActivity = (name: string, metric?: string) => {
                     <View style={styles.toggleRow}>
                         <TouchableOpacity style={[styles.toggleBtn, !isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(false)}><Text style={styles.toggleText}>LOAD</Text></TouchableOpacity>
                         <TouchableOpacity style={[styles.toggleBtn, isBodyweight && styles.activeStrength]} onPress={() => setIsBodyweight(true)}><Text style={styles.toggleText}>BODYWEIGHT</Text></TouchableOpacity>
+                    </View>
+                    <View style={styles.toggleRow}>
+                        <TouchableOpacity style={[styles.toggleBtn, strengthMetric === 'reps' && styles.activeStrength]} onPress={() => setStrengthMetric('reps')}><Text style={styles.toggleText}>REPS BASED</Text></TouchableOpacity>
+                        <TouchableOpacity style={[styles.toggleBtn, strengthMetric === 'time' && styles.activeStrength]} onPress={() => setStrengthMetric('time')}><Text style={styles.toggleText}>TIME BASED</Text></TouchableOpacity>
                     </View>
     <View style={styles.strengthRow}>
     {/* WEIGHT COLUMN */}
@@ -413,7 +437,7 @@ const handleSelectActivity = (name: string, metric?: string) => {
     {/* REPS COLUMN */}
     <View style={{ flex: 1 }}>
         <View style={styles.labelWithToggle}>
-            <Text style={styles.label}>REPS</Text>
+            <Text style={styles.label}>{strengthMetric === 'reps' ? 'REPS' : 'TIME (SECS)'}</Text>
             {/* Empty View to match the height of the toggle button */}
             <View style={{ height: 20 }} />
         </View>

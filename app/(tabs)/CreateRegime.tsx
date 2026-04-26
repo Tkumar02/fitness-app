@@ -100,7 +100,14 @@ export default function CreateRegime() {
         renderItem={({ item }) => (
           <View style={[styles.exCard, { backgroundColor: isDark ? '#1c1c1e' : '#fff' }]}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: isDark ? '#fff' : '#000', fontWeight: '700', fontSize: 16 }}>{item.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons 
+                  name={item.category === 'strength' ? 'barbell-outline' : 'pedometer-outline'} 
+                  size={16} 
+                  color={item.category === 'strength' ? '#007AFF' : '#34C759'} 
+                />
+                <Text style={{ color: isDark ? '#fff' : '#000', fontWeight: '700', fontSize: 16 }}>{item.name}</Text>
+              </View>
               <Text style={{ color: '#888', fontSize: 13, marginTop: 4 }}>
                 {item.category === 'strength' 
                   ? `${item.sets} sets • ${item.reps} reps • ${item.weight}${item.unit || 'kg'}` 
@@ -108,7 +115,7 @@ export default function CreateRegime() {
               </Text>
             </View>
             <TouchableOpacity onPress={() => removeExercise(item.id)} style={styles.deleteBtn}>
-              <Ionicons name="trash-outline" size={20} color="#ff453a" />
+              <Ionicons name="close-circle" size={20} color="#ff453a" />
             </TouchableOpacity>
           </View>
         )}

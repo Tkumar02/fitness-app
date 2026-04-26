@@ -223,7 +223,11 @@ const hasCyclingData = useMemo(() => {
             return 0;
         });
 
-        const intensityData = lastSix.map(d => Number(d.intensity || d.rpe) || 0);
+        const intensityData = lastSix.map(d => {
+            const rpe = Number(d.rpe) || 0;
+            const level = Number(d.intensity) || 0;
+            return rpe > 0 ? rpe : level;
+        });
 
         // Determine which line to show in Strength mode
         const activeProgressData = (isStrength && viewMode === 'Volume') ? volumeData : rmData;
@@ -241,7 +245,7 @@ const hasCyclingData = useMemo(() => {
             intensity: {
                 labels,
                 datasets: [{ data: intensityData, color: (opacity = 1) => theme.intensity, strokeWidth: 3 }],
-                legend: ["Intensity (RPE)"]
+                legend: ["Effort (RPE or Level)"]
             }
         };
     }, [selectedActivity, selectedVariation, workouts, viewMode, isDark]);

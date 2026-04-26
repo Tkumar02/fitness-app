@@ -7,10 +7,12 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp, where
+  serverTimestamp, where,
+  updateDoc
 } from 'firebase/firestore';
 import React, { useContext, useEffect, useState } from 'react';
 import {
@@ -28,29 +30,50 @@ export default function TemplateList() {
   const navigation = useNavigation<any>();
   const isDark = useColorScheme() === 'dark';
 
-  const [templates, setTemplates] = useState<any[]>([]);
+    const [templates, setTemplates] = useState<any[]>([]);
+    const [activeSession, setActiveSession] = useState<any>(null);
 
-  const theme = {
-    bg: isDark ? '#000' : '#f2f2f7',
-    card: isDark ? '#111' : '#fff',
-    text: isDark ? '#fff' : '#000',
-    sub: '#8e8e93',
-    accent: '#34C759'
-  };
+    const theme = {
+        bg: isDark ? '#000' : '#f2f2f7',
+        card: isDark ? '#111' : '#fff',
+        text: isDark ? '#fff' : '#000',
+        sub: '#8e8e93',
+        accent: '#34C759'
+    };
 
-  useEffect(() => {
-    if (!user?.uid) return;
+    useEffect(() => {
+        if (!user?.uid) return;
 
-    const q = query(
-      collection(db, 'templates'), 
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
+        const qTemplates = query(
+            collection(db, 'templates'), 
+            where('userId', '==', user.uid),
+            orderBy('createdAt', 'desc')
+        );
 
-    return onSnapshot(q, snap => {
-      setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-  }, [user]);
+        const unsubTemplates = onSnapshot(qTemplates, snap => {
+            setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+
+        const qSessions = query(
+            collection(db, 'workoutSessions'),
+            where('userId', '==', user.uid),
+            where('status', '==', 'active')
+        );
+
+        const unsubSessions = onSnapshot(qSessions, snap => {
+            if (!snap.empty) {
+                const doc = snap.docs[0];
+                setActiveSession({ id: doc.id, ...doc.data() });
+            } else {
+                setActiveSession(null);
+            }
+        });
+
+        return () => {
+            unsubTemplates();
+            unsubSessions();
+        };
+    }, [user]);
 
 //   useEffect(() => {
 //   console.log("Debug: Starting simple fetch...");
@@ -89,6 +112,31 @@ export default function TemplateList() {
   // START REGIME
   // ================================
   const startRegime = async (template: any) => {
+    if (activeSession?.templateId === template.id) {
+        navigation.navigate('ActiveRegime', {
+            template,
+            sessionId: activeSession.id
+        });
+        return;
+    }
+
+    // Close any other active sessions first to prevent "ghost" active sessions
+    try {
+        const q = query(
+            collection(db, 'workoutSessions'),
+            where('userId', '==', user!.uid),
+            where('status', '==', 'active')
+        );
+        const activeSnaps = await getDocs(q);
+        const batch = [];
+        for (const sDoc of activeSnaps.docs) {
+            batch.push(updateDoc(doc(db, 'workoutSessions', sDoc.id), { status: 'abandoned', endedAt: serverTimestamp() }));
+        }
+        await Promise.all(batch);
+    } catch (e) {
+        console.error("Error clearing old sessions:", e);
+    }
+
     const sessionRef = await addDoc(collection(db, 'workoutSessions'), {
       userId: user!.uid,
       templateId: template.id,
@@ -128,35 +176,49 @@ export default function TemplateList() {
     }
   };
 
-const renderItem = ({ item }: { item: any }) => (
-    <View style={[styles.card, { backgroundColor: theme.card }]}>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.title, { color: theme.text }]}>{item.name}</Text>
-        <Text style={{ color: theme.sub, fontSize: 12 }}>
-          {item.exercises?.length || 0} exercises
-        </Text>
-      </View>
+const renderItem = ({ item }: { item: any }) => {
+    const isActive = activeSession?.templateId === item.id;
 
-      <View style={styles.actions}>
-        <TouchableOpacity onPress={() => startRegime(item)} style={styles.playBtn}>
-          <Ionicons name="play" size={20} color="#000" />
-        </TouchableOpacity>
+    return (
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={[styles.title, { color: theme.text }]}>{item.name}</Text>
+                {isActive && (
+                    <View style={{ backgroundColor: theme.accent, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '900', color: '#000' }}>ACTIVE</Text>
+                    </View>
+                )}
+            </View>
+            <Text style={{ color: theme.sub, fontSize: 12 }}>
+              {item.exercises?.length || 0} exercises
+            </Text>
+          </View>
 
-        {/* ✅ FIXED: Use the screen name 'CreateRegime', not the file path */}
-        <TouchableOpacity
-          onPress={() =>
-            navigation.navigate('CreateRegime', { template: item })
-          }
-        >
-          <Ionicons name="create-outline" size={20} color={theme.sub} />
-        </TouchableOpacity>
+          <View style={styles.actions}>
+            <TouchableOpacity onPress={() => startRegime(item)} style={[styles.playBtn, isActive && { backgroundColor: theme.text }]}>
+              <Ionicons name={isActive ? "eye" : "play"} size={20} color={isActive ? theme.card : "#000"} />
+            </TouchableOpacity>
+            
+            {!isActive && (
+                <>
+                    <TouchableOpacity
+                      onPress={() =>
+                        navigation.navigate('CreateRegime', { template: item })
+                      }
+                    >
+                      <Ionicons name="create-outline" size={20} color={theme.sub} />
+                    </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => deleteTemplate(item.id)}>
-          <Ionicons name="trash-outline" size={20} color="#ff453a" />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+                    <TouchableOpacity onPress={() => deleteTemplate(item.id)}>
+                      <Ionicons name="trash-outline" size={20} color="#ff453a" />
+                    </TouchableOpacity>
+                </>
+            )}
+          </View>
+        </View>
+    );
+};
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>

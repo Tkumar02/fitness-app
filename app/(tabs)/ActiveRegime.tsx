@@ -2,7 +2,7 @@ import { UserContext } from '@/context/UserContext';
 import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import React, { useContext, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 type RouteParams = {
   ActiveRegime: {
     template?: any;
+    sessionId?: string;
   };
 };
 
@@ -30,6 +31,7 @@ export default function ActiveRegime() {
   const isDark = colorScheme === 'dark';
 
   const template = route.params?.template;
+  const sessionId = route.params?.sessionId;
 
   // State
   const [exerciseIndex, setExerciseIndex] = useState(0);
@@ -37,6 +39,26 @@ export default function ActiveRegime() {
   const [exerciseStartTime, setExerciseStartTime] = useState<Date | null>(null);
   const [sessionExercises, setSessionExercises] = useState<any[]>([]); 
   const [saving, setSaving] = useState(false);
+  
+  // Stopwatch state
+  const [seconds, setSeconds] = useState(0);
+  const [timerActive, setTimerActive] = useState(false);
+
+  useEffect(() => {
+    let interval: any;
+    if (timerActive) {
+      interval = setInterval(() => {
+        setSeconds(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [timerActive]);
+
+  const formatTime = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
 
   // Theme Object
   const theme = {
@@ -82,10 +104,13 @@ export default function ActiveRegime() {
   const handleStartExercise = () => {
     setIsStarted(true);
     setExerciseStartTime(new Date());
+    setTimerActive(true);
+    setSeconds(0);
   };
 
 const handleFinishExercise = async () => {
   setSaving(true);
+  setTimerActive(false);
   const endTime = new Date();
   const durationSeconds = exerciseStartTime 
     ? Math.floor((endTime.getTime() - exerciseStartTime.getTime()) / 1000) 
@@ -102,8 +127,10 @@ const handleFinishExercise = async () => {
     reps: currentEx.reps || 0,
     sets: currentEx.sets || 0,
     weightUnit: currentEx.weightUnit || 'kg',
+    strengthMetric: currentEx.strengthMetric || 'reps',
     weight: currentEx.weight || 0,
     distance: currentEx.metricValue || 0,
+    intensity: currentEx.intensity || 0,
     duration: currentEx.duration || 0,
     unit: currentEx.unit || 'km',
     actualTimeSec: durationSeconds,
@@ -124,16 +151,27 @@ const handleFinishExercise = async () => {
       setIsStarted(false);
       setExerciseStartTime(null);
     } else {
-      // 3. SAVE SESSION (Uses serverTimestamp for the session itself)
-      await addDoc(collection(db, 'workoutSession'), {
-        userId: user?.uid,
-        regimeName: template.name || template.title,
-        exercises: updatedSession, // No serverTimestamp inside this array anymore!
-        createdAt: serverTimestamp(), // Top-level is fine
-        date: new Date().toLocaleDateString('en-GB'),
-      });
+      // 3. UPDATE/SAVE SESSION
+      if (sessionId) {
+        await updateDoc(doc(db, 'workoutSessions', sessionId), {
+            status: 'completed',
+            endedAt: serverTimestamp(),
+            exercises: updatedSession,
+            date: new Date().toLocaleDateString('en-GB'),
+        });
+      } else {
+        // Fallback for sessions started without a tracked ID
+        await addDoc(collection(db, 'workoutSessions'), {
+            userId: user?.uid,
+            regimeName: template.name || template.title,
+            exercises: updatedSession,
+            status: 'completed',
+            createdAt: serverTimestamp(),
+            date: new Date().toLocaleDateString('en-GB'),
+        });
+      }
 
-      navigation.setParams({ template: undefined });
+      navigation.setParams({ template: undefined, sessionId: undefined });
 
       // 4. NAVIGATION
       if (Platform.OS === 'web') {
@@ -199,8 +237,8 @@ const handleFinishExercise = async () => {
             {currentEx.category === 'strength' ? (
               <>
                 <DetailItem label="Sets" value={currentEx.sets} theme={theme} />
-                <DetailItem label="Reps" value={currentEx.reps} theme={theme} />
-                <DetailItem label="Load" value={`${currentEx.weight}${currentEx.weightUnit}`} theme={theme} />
+                <DetailItem label={currentEx.strengthMetric === 'time' ? "Secs" : "Reps"} value={currentEx.reps} theme={theme} />
+                <DetailItem label="Load" value={`${currentEx.weight}${currentEx.unit || currentEx.weightUnit || 'kg'}`} theme={theme} />
               </>
             ) : (
               <>
@@ -209,6 +247,13 @@ const handleFinishExercise = async () => {
               </>
             )}
           </View>
+
+          {isStarted && (
+            <View style={styles.timerContainer}>
+              <Ionicons name="stopwatch-outline" size={20} color={theme.accent} />
+              <Text style={[styles.timerText, { color: theme.text }]}>{formatTime(seconds)}</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.footer}>
@@ -272,6 +317,17 @@ const styles = StyleSheet.create({
   detailItem: { alignItems: 'center' },
   detailLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginBottom: 5 },
   detailValue: { fontSize: 20, fontWeight: '800' },
+  timerContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: 30, 
+    gap: 8,
+    backgroundColor: 'rgba(0,122,255,0.1)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 15
+  },
+  timerText: { fontSize: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
   footer: { 
     marginTop: 'auto', 
     paddingBottom: 60, 

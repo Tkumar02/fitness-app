@@ -2,7 +2,7 @@
 import { auth, db } from '@/firebase';
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import React, { useContext, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -49,6 +49,7 @@ export default function HomePage() {
         timeCurrent: 0,
         timeTarget: 0
     });
+    const [hasActiveSession, setHasActiveSession] = useState(false);
 
     useEffect(() => {
         // If no user is logged in, stop loading and just show the "Welcome" state
@@ -56,6 +57,16 @@ export default function HomePage() {
             setLoading(false);
             return;
         }
+
+        // Real-time listener for active session
+        const qSession = query(
+            collection(db, 'workoutSessions'),
+            where('userId', '==', user.uid),
+            where('status', '==', 'active')
+        );
+        const unsubSession = onSnapshot(qSession, (snap) => {
+            setHasActiveSession(!snap.empty);
+        });
 
         const fetchData = async () => {
             try {
@@ -127,6 +138,7 @@ export default function HomePage() {
         };
 
         fetchData();
+        return () => unsubSession();
     }, [user]);
 
     const handleSignOut = async () => {
@@ -199,7 +211,13 @@ export default function HomePage() {
                             </View>
 
                             <View style={styles.menu}>
-                                <MenuButton title="Log Workout" emoji="🏋️" color={theme.accent} onPress={() => router.push('/(tabs)/AddWorkout')} />
+                                <MenuButton 
+                                    title={hasActiveSession ? "Resume Workout" : "Log Workout"} 
+                                    emoji="🏋️" 
+                                    color={hasActiveSession ? theme.success : theme.accent} 
+                                    onPress={() => router.push(hasActiveSession ? '/(tabs)/TemplateList' : '/(tabs)/AddWorkout')}
+                                    badge={hasActiveSession ? "RESUME" : null}
+                                />
                                 <MenuButton title="Progression" emoji="📊" color="#5856D6" onPress={() => router.push('/(tabs)/ReviewWorkout')} />
                                 <MenuButton title="My Goals" emoji="🎯" color={theme.success} onPress={() => router.push('/(tabs)/Goals')} />
                             </View>
@@ -234,10 +252,17 @@ const ProgressBar = ({ label, current, target, color, theme, suffix = "" }: any)
     );
 };
 
-const MenuButton = ({ title, emoji, color, onPress }: any) => (
+const MenuButton = ({ title, emoji, color, onPress, badge }: any) => (
     <TouchableOpacity style={[styles.card, { backgroundColor: color }]} onPress={onPress}>
         <View style={styles.cardIconBox}><Text style={styles.cardEmoji}>{emoji}</Text></View>
-        <Text style={styles.cardTitle}>{title}</Text>
+        <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={styles.cardTitle}>{title}</Text>
+            {badge && (
+                <View style={{ backgroundColor: '#fff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                    <Text style={{ color: color, fontSize: 10, fontWeight: '900' }}>{badge}</Text>
+                </View>
+            )}
+        </View>
     </TouchableOpacity>
 );
 

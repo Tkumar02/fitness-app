@@ -48,6 +48,7 @@ export default function GoalsPage() {
     const [loadGoal, setLoadGoal] = useState('');
     const [setsGoal, setSetsGoal] = useState('');
     const [repsGoal, setRepsGoal] = useState('');
+    const [strengthMetric, setStrengthMetric] = useState<'reps' | 'time'>('reps');
 
     // Achievements State
     const [activeGoals, setActiveGoals] = useState<any[]>([]);
@@ -134,6 +135,7 @@ export default function GoalsPage() {
                 goalData.loadGoal = Number(loadGoal) || 0;
                 goalData.setsGoal = Number(setsGoal) || 0;
                 goalData.repsGoal = Number(repsGoal) || 0;
+                goalData.strengthMetric = strengthMetric;
                 goalData.isBW = isBodyweight;
             } else {
                 goalData.timeGoal = Number(timeGoal) || 0;
@@ -198,7 +200,7 @@ export default function GoalsPage() {
                                     <Text style={styles.questTitle}>{g.activity}</Text>
                                     <Text style={styles.questSub}>
                                         {g.category === 'strength' 
-                                            ? `${g.isBW ? 'BW +' : ''} ${g.loadGoal}kg • ${g.setsGoal}x${g.repsGoal}`
+                                            ? `${g.isBW ? 'BW +' : ''}${g.loadGoal}kg • ${g.setsGoal}x${g.repsGoal}${g.strengthMetric === 'time' ? 's' : ''}`
                                             : g.focus === 'performance' ? `${g.speedGoal}${g.unit === 'km' ? 'km/h' : 'mph'} for ${g.timeGoal}m` : `${g.distGoal}${g.unit} in ${g.timeGoal}m`}
                                     </Text>
                                 </View>
@@ -261,10 +263,19 @@ export default function GoalsPage() {
                                     <Text style={styles.mText}>{isBodyweight ? "BODYWEIGHT MODE ON" : "USE BODYWEIGHT?"}</Text>
                                 </TouchableOpacity>
 
+                                <View style={[styles.toggleRow, { marginBottom: 15 }]}>
+                                    <TouchableOpacity style={[styles.toggleBtn, strengthMetric === 'reps' && { backgroundColor: colors.strength }]} onPress={() => setStrengthMetric('reps')}>
+                                        <Text style={styles.toggleText}>REPS BASED</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={[styles.toggleBtn, strengthMetric === 'time' && { backgroundColor: colors.strength }]} onPress={() => setStrengthMetric('time')}>
+                                        <Text style={styles.toggleText}>TIME BASED</Text>
+                                    </TouchableOpacity>
+                                </View>
+
                                 <View style={styles.inputRow}>
                                     <View style={styles.inputStack}><Text style={styles.label}>{isBodyweight ? '+ KG' : 'KG'}</Text><TextInput style={styles.mainInput} keyboardType="numeric" value={loadGoal} onChangeText={setLoadGoal} /></View>
                                     <View style={styles.inputStack}><Text style={styles.label}>SETS</Text><TextInput style={styles.mainInput} keyboardType="numeric" value={setsGoal} onChangeText={setSetsGoal} /></View>
-                                    <View style={styles.inputStack}><Text style={styles.label}>REPS</Text><TextInput style={styles.mainInput} keyboardType="numeric" value={repsGoal} onChangeText={setRepsGoal} /></View>
+                                    <View style={styles.inputStack}><Text style={styles.label}>{strengthMetric === 'reps' ? 'REPS' : 'SECS'}</Text><TextInput style={styles.mainInput} keyboardType="numeric" value={repsGoal} onChangeText={setRepsGoal} /></View>
                                 </View>
                             </View>
                         )}

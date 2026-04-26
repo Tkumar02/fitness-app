@@ -39,16 +39,50 @@ export default function AddExerciseModal({ visible, onClose, onAdd, customList, 
   // Input Data
   const [duration, setDuration] = useState('');
   const [metricValue, setMetricValue] = useState('');
+  const [intensity, setIntensity] = useState('');
   const [focus, setFocus] = useState<'endurance' | 'performance'>('endurance');
   const [sets, setSets] = useState('');
   const [reps, setReps] = useState('');
   const [weight, setWeight] = useState('');
   const [isBodyweight, setIsBodyweight] = useState(false);
+  const [strengthMetric, setStrengthMetric] = useState<'reps' | 'time'>('reps');
+
+  const secondaryStats = useMemo(() => {
+    if (category !== 'cardio') return null;
+    const t = parseFloat(duration);
+    const mVal = parseFloat(metricValue);
+    
+    if (t > 0 && mVal > 0) {
+      if (selectedName === 'Swimming') {
+        const meters = mVal * 25; // Default to 25m for estimation
+        const km = meters / 1000;
+        const dist = distUnit === 'km' ? km : km * 0.621371;
+        const paceDec = t / dist;
+        const mins = Math.floor(paceDec);
+        const secs = Math.round((paceDec - mins) * 60);
+        return `Est. Distance: ${dist.toFixed(2)}${distUnit} • Pace: ${mins}:${secs < 10 ? '0' : ''}${secs}/${distUnit}`;
+      }
+      if (focus === 'performance') {
+        const dist = (mVal * (t / 60)).toFixed(2);
+        const paceDec = 60 / mVal;
+        const mins = Math.floor(paceDec);
+        const secs = Math.round((paceDec - mins) * 60);
+        return `Est. Distance: ${dist} ${distUnit} • Pace: ${mins}:${secs < 10 ? '0' : ''}${secs}/${distUnit}`;
+      } else {
+        const paceDec = t / mVal;
+        const mins = Math.floor(paceDec);
+        const secs = Math.round((paceDec - mins) * 60);
+        const speed = (60 / paceDec).toFixed(1);
+        return `Pace: ${mins}:${secs < 10 ? '0' : ''}${secs}/${distUnit} • Speed: ${speed} ${distUnit === 'km' ? 'km/h' : 'mph'}`;
+      }
+    }
+    return null;
+  }, [category, duration, metricValue, focus, distUnit]);
 
   // Exercise List Filtering
   const listToDisplay = useMemo(() => {
     const defaults = {
-      cardio: ['Running', 'Cycling', 'Treadmill', 'Rowing', 'Elliptical', 'Stairmaster'],
+      cardio: ['Running', 'Cycling', 'Swimming', 'Treadmill', 'Rowing', 'Elliptical', 'Stairmaster'],
       strength: ['Bench Press', 'Squats', 'Deadlift', 'Shoulder Press', 'Pull Ups', 'Dips'],
     };
     const base = defaults[category].map(name => ({ name, isCustom: false }));
@@ -88,6 +122,7 @@ export default function AddExerciseModal({ visible, onClose, onAdd, customList, 
       ...(category === 'cardio' ? {
         duration,
         metricValue,
+        intensity,
         focus,
         unit: distUnit,
       } : {
@@ -96,6 +131,7 @@ export default function AddExerciseModal({ visible, onClose, onAdd, customList, 
         weight: weight || '0',
         isBodyweight,
         unit: weightUnit,
+        strengthMetric,
       }),
     };
 
@@ -104,8 +140,9 @@ export default function AddExerciseModal({ visible, onClose, onAdd, customList, 
   };
 
   const resetAndClose = () => {
-    setSelectedName(''); setSearchQuery(''); setDuration(''); setMetricValue('');
+    setSelectedName(''); setSearchQuery(''); setDuration(''); setMetricValue(''); setIntensity('');
     setSets(''); setReps(''); setWeight(''); setIsBodyweight(false); setFocus('endurance');
+    setStrengthMetric('reps');
     onClose();
   };
 
@@ -161,25 +198,38 @@ export default function AddExerciseModal({ visible, onClose, onAdd, customList, 
           </ScrollView>
 
           {/* Sub-Toggles (Endurance/Perf or Loaded/Bodyweight) */}
-          <View style={[styles.subToggleContainer, { backgroundColor: theme.input }]}>
-            {category === 'strength' ? (
-              <>
-                <TouchableOpacity style={[styles.subToggle, !isBodyweight && styles.activeSubToggle]} onPress={() => setIsBodyweight(false)}>
-                  <Text style={[styles.subToggleText, { color: !isBodyweight ? '#000' : theme.subtext }]}>LOADED</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.subToggle, isBodyweight && styles.activeSubToggle]} onPress={() => setIsBodyweight(true)}>
-                  <Text style={[styles.subToggleText, { color: isBodyweight ? '#000' : theme.subtext }]}>BODYWEIGHT</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <TouchableOpacity style={[styles.subToggle, focus === 'endurance' && styles.activeSubToggle]} onPress={() => setFocus('endurance')}>
-                  <Text style={[styles.subToggleText, { color: focus === 'endurance' ? '#000' : theme.subtext }]}>ENDURANCE</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.subToggle, focus === 'performance' && styles.activeSubToggle]} onPress={() => setFocus('performance')}>
-                  <Text style={[styles.subToggleText, { color: focus === 'performance' ? '#000' : theme.subtext }]}>PERFORMANCE</Text>
-                </TouchableOpacity>
-              </>
+          <View style={{ gap: 10, marginBottom: 20 }}>
+            <View style={[styles.subToggleContainer, { backgroundColor: theme.input, marginBottom: 0 }]}>
+                {category === 'strength' ? (
+                <>
+                    <TouchableOpacity style={[styles.subToggle, !isBodyweight && styles.activeSubToggle]} onPress={() => setIsBodyweight(false)}>
+                    <Text style={[styles.subToggleText, { color: !isBodyweight ? '#000' : theme.subtext }]}>LOADED</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.subToggle, isBodyweight && styles.activeSubToggle]} onPress={() => setIsBodyweight(true)}>
+                    <Text style={[styles.subToggleText, { color: isBodyweight ? '#000' : theme.subtext }]}>BODYWEIGHT</Text>
+                    </TouchableOpacity>
+                </>
+                ) : (
+                <>
+                    <TouchableOpacity style={[styles.subToggle, focus === 'endurance' && styles.activeSubToggle]} onPress={() => setFocus('endurance')}>
+                    <Text style={[styles.subToggleText, { color: focus === 'endurance' ? '#000' : theme.subtext }]}>ENDURANCE</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.subToggle, focus === 'performance' && styles.activeSubToggle]} onPress={() => setFocus('performance')}>
+                    <Text style={[styles.subToggleText, { color: focus === 'performance' ? '#000' : theme.subtext }]}>PERFORMANCE</Text>
+                    </TouchableOpacity>
+                </>
+                )}
+            </View>
+
+            {category === 'strength' && (
+                <View style={[styles.subToggleContainer, { backgroundColor: theme.input, marginBottom: 0 }]}>
+                    <TouchableOpacity style={[styles.subToggle, strengthMetric === 'reps' && styles.activeSubToggle]} onPress={() => setStrengthMetric('reps')}>
+                        <Text style={[styles.subToggleText, { color: strengthMetric === 'reps' ? '#000' : theme.subtext }]}>REPS BASED</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.subToggle, strengthMetric === 'time' && styles.activeSubToggle]} onPress={() => setStrengthMetric('time')}>
+                        <Text style={[styles.subToggleText, { color: strengthMetric === 'time' ? '#000' : theme.subtext }]}>TIME BASED</Text>
+                    </TouchableOpacity>
+                </View>
             )}
           </View>
 
@@ -188,7 +238,7 @@ export default function AddExerciseModal({ visible, onClose, onAdd, customList, 
             {category === 'strength' ? (
               <>
                 <InputBox label="SETS" value={sets} onChange={setSets} theme={theme} />
-                <InputBox label="REPS" value={reps} onChange={setReps} theme={theme} />
+                <InputBox label={strengthMetric === 'reps' ? "REPS" : "SECS"} value={reps} onChange={setReps} theme={theme} />
                 <View style={styles.inputWrapper}>
                   <TouchableOpacity onPress={() => setWeightUnit(weightUnit === 'kg' ? 'lbs' : 'kg')}>
                     <Text style={[styles.tinyLabel, { color: theme.accent }]}>{isBodyweight ? '+ ' : ''}{weightUnit.toUpperCase()} ⇅</Text>
@@ -201,13 +251,22 @@ export default function AddExerciseModal({ visible, onClose, onAdd, customList, 
                 <InputBox label="MINS" value={duration} onChange={setDuration} theme={theme} />
                 <View style={styles.inputWrapper}>
                   <TouchableOpacity onPress={() => setDistUnit(distUnit === 'km' ? 'miles' : 'km')}>
-                    <Text style={[styles.tinyLabel, { color: theme.accent }]}>{focus === 'endurance' ? distUnit.toUpperCase() : 'LVL'} ⇅</Text>
+                    <Text style={[styles.tinyLabel, { color: theme.accent }]}>
+                      {focus === 'endurance' ? `${distUnit.toUpperCase()} ⇅` : (distUnit === 'km' ? 'KM/H ⇅' : 'MPH ⇅')}
+                    </Text>
                   </TouchableOpacity>
                   <TextInput style={[styles.gridInput, { backgroundColor: theme.input, color: theme.text }]} placeholder="0" keyboardType="numeric" value={metricValue} onChangeText={setMetricValue} />
                 </View>
+                <InputBox label="LEVEL" value={intensity} onChange={setIntensity} theme={theme} />
               </>
             )}
           </View>
+
+          {secondaryStats && (
+            <View style={[styles.secondaryStatsBox, { backgroundColor: theme.input }]}>
+              <Text style={[styles.secondaryStatsText, { color: theme.accent }]}>{secondaryStats}</Text>
+            </View>
+          )}
 
           {/* Actions */}
           <TouchableOpacity style={[styles.mainBtn, { backgroundColor: theme.accent }]} onPress={handleFinalAdd}>
@@ -251,6 +310,8 @@ const styles = StyleSheet.create({
   inputWrapper: { flex: 1 },
   tinyLabel: { fontSize: 10, fontWeight: '800', marginBottom: 5, textAlign: 'center' },
   gridInput: { borderRadius: 14, padding: 16, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  secondaryStatsBox: { padding: 12, borderRadius: 12, marginBottom: 20, alignItems: 'center' },
+  secondaryStatsText: { fontSize: 12, fontWeight: '700' },
   mainBtn: { padding: 18, borderRadius: 18, alignItems: 'center' },
   mainBtnText: { color: '#fff', fontWeight: '800', fontSize: 17 },
   cancelBtn: { marginTop: 15, alignItems: 'center', padding: 10 }

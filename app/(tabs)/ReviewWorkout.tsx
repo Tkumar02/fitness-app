@@ -150,7 +150,8 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
     const renderWorkoutItem = ({ item }: { item: any }) => {
 
         const isNoteExpanded = expandedNotes[item.id];
-        const rpeValue = item.intensity || item.rpe;
+        const rpeValue = Number(item.rpe) || 0;
+        const intensityValue = Number(item.intensity) || 0;
         // Use 'weight' for normal lifts, 'addedWeight' for Bodyweight exercises
         const effectiveWeight = item.isBW ? (Number(item.addedWeight) || 0) : (Number(item.weight) || 0);
     
@@ -163,9 +164,14 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                 <View style={styles.cardHeader}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <Text style={styles.dateText}>{item.date}</Text>
-                        {!!rpeValue && (
-                            <View style={[styles.rpeBadge, { backgroundColor: getRPEColor(Number(rpeValue)) + '20' }]}>
-                                <Text style={[styles.rpeBadgeText, { color: getRPEColor(Number(rpeValue)) }]}>RPE {rpeValue}</Text>
+                        {rpeValue > 0 && (
+                            <View style={[styles.rpeBadge, { backgroundColor: getRPEColor(rpeValue) + '20' }]}>
+                                <Text style={[styles.rpeBadgeText, { color: getRPEColor(rpeValue) }]}>RPE {rpeValue}</Text>
+                            </View>
+                        )}
+                        {intensityValue > 0 && rpeValue === 0 && (
+                            <View style={[styles.rpeBadge, { backgroundColor: theme.accent + '20' }]}>
+                                <Text style={[styles.rpeBadgeText, { color: theme.accent }]}>LVL {intensityValue}</Text>
                             </View>
                         )}
                     </View>
@@ -200,7 +206,7 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
             <Text style={[styles.statValue, {color: theme.text}]}>{item.sets}</Text>
         </View>
         <View>
-            <Text style={styles.statLabel}>Reps</Text>
+            <Text style={styles.statLabel}>{item.strengthMetric === 'time' ? 'Secs' : 'Reps'}</Text>
             <Text style={[styles.statValue, {color: theme.text}]}>{item.reps}</Text>
         </View>
         <View>
@@ -240,14 +246,14 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                 </View>
 
                 <View style={[styles.performanceRow, { borderTopColor: isDark ? '#333' : '#eee' }]}>
-                <View style={{ flexDirection: 'row', gap: 15 }}>
+                <View style={{ flexDirection: 'row', gap: 15, flex: 1 }}>
                     {item.category === 'strength' ? (
                         <>
                             {/* ONLY SHOW IF GREATER THAN 0 */}
                             {c1RM > 0 && (
-<Text style={[styles.performanceText, { color: theme.text }]}>
-    1RM: {c1RM}{item.weightUnit || 'kg'}
-</Text>
+                                <Text style={[styles.performanceText, { color: theme.text }]}>
+                                    1RM: {c1RM}{item.weightUnit || 'kg'}
+                                </Text>
                             )}
                             {totalVolume > 0 && (
                                 <Text style={[styles.performanceText, { color: theme.subtext }]}>
@@ -260,7 +266,22 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                             )}
                         </>
                     ) : (
-                        <Text style={[styles.performanceText, { color: theme.subtext }]}>Type: Cardio</Text>
+                        (() => {
+                            const dur = Number(item.duration);
+                            const dist = Number(item.distance);
+                            if (dur > 0 && dist > 0) {
+                                const paceDec = dur / dist;
+                                const mins = Math.floor(paceDec);
+                                const secs = Math.round((paceDec - mins) * 60);
+                                const unit = item.unit?.replace('/h', '') || 'km';
+                                return (
+                                    <Text style={[styles.performanceText, { color: theme.subtext }]}>
+                                        Avg Pace: <Text style={{ color: theme.success }}>{mins}:${secs < 10 ? '0' : ''}${secs}/{unit}</Text>
+                                    </Text>
+                                );
+                            }
+                            return <Text style={[styles.performanceText, { color: theme.subtext }]}>Type: Cardio</Text>;
+                        })()
                     )}
                 </View>
                     {item.notes && (
