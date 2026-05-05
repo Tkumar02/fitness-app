@@ -43,6 +43,18 @@ export default function ProgressionCharts() {
         intensity: '#FF9500' 
     };
 
+    // Helper to safely parse dates in multiple formats
+    const parseDate = (dateStr: string) => {
+        if (!dateStr) return new Date(0);
+        // If it's DD/MM/YYYY
+        if (dateStr.includes('/')) {
+            const [d, m, y] = dateStr.split('/');
+            return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+        }
+        // If it's YYYY-MM-DD
+        return new Date(dateStr);
+    };
+
     useEffect(() => {
         if (!user?.uid) return;
         const q = query(
@@ -51,7 +63,10 @@ export default function ProgressionCharts() {
             orderBy('date', 'asc')
         );
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(d => d.data());
+            const data: any[] = snapshot.docs.map(d => d.data());
+            // Sort in-memory to fix mixed date format issues (DD/MM/YYYY vs YYYY-MM-DD)
+            data.sort((a, b) => parseDate(a.date).getTime() - parseDate(b.date).getTime());
+            
             setWorkouts(data);
             if (data.length > 0 && !selectedActivity) {
                 setSelectedActivity(data[data.length - 1].activity);
@@ -80,10 +95,11 @@ const swimmingTotal = useMemo(() => {
     let cutoffDate = new Date(0);
     if (swimTimeframe !== 'All') {
         cutoffDate = new Date();
+        cutoffDate.setHours(0, 0, 0, 0);
         cutoffDate.setDate(now.getDate() - parseInt(swimTimeframe));
     }
     return workouts
-        .filter(w => w.activity === 'Swimming' && new Date(w.date) >= cutoffDate)
+        .filter(w => w.activity === 'Swimming' && parseDate(w.date) >= cutoffDate)
         .reduce((sum, current) => sum + (Number(current.distance) || 0), 0)
         .toFixed(1);
 }, [workouts, swimTimeframe]);
@@ -110,13 +126,14 @@ const runningTotal = useMemo(() => {
 
     if (runTimeframe !== 'All') {
         cutoffDate = new Date();
+        cutoffDate.setHours(0, 0, 0, 0);
         cutoffDate.setDate(now.getDate() - parseInt(runTimeframe));
     }
 
     return workouts
         .filter(w => {
             const isRunning = w.activity === 'Running' || w.activity === 'Treadmill';
-            return isRunning && new Date(w.date) >= cutoffDate;
+            return isRunning && parseDate(w.date) >= cutoffDate;
         })
         .reduce((sum, current) => sum + (Number(current.distance) || 0), 0)
         .toFixed(1); // One decimal place looks cleaner
@@ -128,13 +145,14 @@ const cyclingTotal = useMemo(() => {
 
     if (cycleTimeframe !== 'All') {
         cutoffDate = new Date();
+        cutoffDate.setHours(0, 0, 0, 0);
         cutoffDate.setDate(now.getDate() - parseInt(cycleTimeframe));
     }
 
     return workouts
         .filter(w => {
             const isCycling = w.activity === 'Cycling';
-            return isCycling && new Date(w.date) >= cutoffDate;
+            return isCycling && parseDate(w.date) >= cutoffDate;
         })
         .reduce((sum, current) => sum + (Number(current.distance) || 0), 0)
         .toFixed(1); // One decimal place looks cleaner
@@ -198,18 +216,26 @@ const hasCyclingData = useMemo(() => {
         const lastSix = filtered.slice(-6);
         if (lastSix.length === 0) return null;
 
-        const labels = lastSix.map(d => d.date.split('-').slice(1).join('/'));
+        const labels = lastSix.map(d => {
+            const dateParts = d.date.includes('/') ? d.date.split('/') : d.date.split('-');
+            // If DD/MM/YYYY, return DD/MM. If YYYY-MM-DD, return MM/DD.
+            // Let's standardize to DD/MM for labels.
+            if (d.date.includes('/')) return `${dateParts[0]}/${dateParts[1]}`;
+            return `${dateParts[2]}/${dateParts[1]}`;
+        });
         const isStrength = lastSix[0].category === 'strength';
 
-        // 1RM Calculation (Brzycki Formula)
+        // 1RM Calculation (Brzycki Formula) or Primary Cardio Metric
         const rmData = lastSix.map(d => {
             if (d.category === 'strength') {
                 const w = parseFloat(d.weight) || 0;
                 const r = parseInt(d.reps) || 0;
                 return r > 1 ? Math.round(w * (1 + r / 30)) : w;
             }
-            // For cardio, return distance (primary metric) or duration
-            return Number(d.distance) > 0 ? Number(d.distance) : Number(d.duration);
+            // For cardio: prioritize distance, then metricValue (floors/levels), then duration
+            if (Number(d.distance) > 0) return Number(d.distance);
+            if (Number(d.metricValue) > 0) return Number(d.metricValue);
+            return Number(d.duration);
         });
 
         // Volume Calculation
@@ -328,9 +354,7 @@ const hasCyclingData = useMemo(() => {
                     </Text>
                     <Ionicons name="refresh-outline" size={10} color="#007AFF" style={{marginLeft: 5, opacity: 0.5}} />
                 </View>
-                <Text style={styles.statMainLabel}>
-                    {swimmingTotal} <Text style={{ fontSize: 16, color: '#8e8e93' }}>KM</Text>
-                </Text>
+                <Text style={styles.statMainLabel}>{swimmingTotal} <Text style={{ fontSize: 16, color: '#8e8e93' }}>KM</Text></Text>
             </View>
             
             <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.1)" />
@@ -420,8 +444,9 @@ const getChartConfig = (isDark: boolean, color: string) => ({
     propsForDots: { r: "5", strokeWidth: "2", stroke: color },
     fillShadowGradientFrom: color,
     fillShadowGradientOpacity: 0.2,
+    // Corrected transform-origin to transformOrigin for web compatibility
+    transformOrigin: isDark ? '#1c1c1e' : '#fff',
 });
-
 function SelectionModal({ visible, title, data, selected, onSelect, theme, onClose }: any) {
     return (
         <Modal visible={visible} transparent animationType="slide">

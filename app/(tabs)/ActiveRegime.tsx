@@ -121,9 +121,10 @@ const handleFinishExercise = async () => {
     userId: user?.uid,
     activity: currentEx.name,
     category: currentEx.category,
+    metricType: currentEx.metricType || (currentEx.category === 'cardio' ? 'DISTANCE' : 'WEIGHT'),
     // Use JS Date for the array-compatible version
     createdAt: new Date().toISOString(), 
-    date: new Date().toLocaleDateString('en-GB'),
+    date: new Date().toISOString().split('T')[0],
     reps: currentEx.reps || 0,
     sets: currentEx.sets || 0,
     weightUnit: currentEx.weightUnit || 'kg',
@@ -157,7 +158,7 @@ const handleFinishExercise = async () => {
             status: 'completed',
             endedAt: serverTimestamp(),
             exercises: updatedSession,
-            date: new Date().toLocaleDateString('en-GB'),
+            date: new Date().toISOString().split('T')[0],
         });
       } else {
         // Fallback for sessions started without a tracked ID
@@ -167,7 +168,7 @@ const handleFinishExercise = async () => {
             exercises: updatedSession,
             status: 'completed',
             createdAt: serverTimestamp(),
-            date: new Date().toLocaleDateString('en-GB'),
+            date: new Date().toISOString().split('T')[0],
         });
       }
 

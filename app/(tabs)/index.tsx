@@ -51,6 +51,16 @@ export default function HomePage() {
     });
     const [hasActiveSession, setHasActiveSession] = useState(false);
 
+    // Helper to safely parse dates in multiple formats
+    const parseDate = (dateStr: string) => {
+        if (!dateStr) return new Date(0);
+        if (dateStr.includes('/')) {
+            const [d, m, y] = dateStr.split('/');
+            return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+        }
+        return new Date(dateStr);
+    };
+
     useEffect(() => {
         // If no user is logged in, stop loading and just show the "Welcome" state
         if (!user) {
@@ -78,24 +88,27 @@ export default function HomePage() {
                 const goalSnap = await getDoc(doc(db, 'users', user.uid, 'settings', 'goals'));
                 const goals = goalSnap.exists() ? goalSnap.data() : {};
 
-                // 3. Fetch Workouts from last 30 days
-                const thirtyDaysAgo = new Date();
-                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                // 3. Fetch Workouts
+                // To handle mixed date formats robustly, we'll fetch all and filter in-memory for recent ones
                 const q = query(
                     collection(db, 'workouts'),
-                    where('userId', '==', user.uid),
-                    where('date', '>=', thirtyDaysAgo.toISOString().split('T')[0])
+                    where('userId', '==', user.uid)
                 );
                 
                 const querySnapshot = await getDocs(q);
-                const workouts = querySnapshot.docs.map(d => d.data());
+                const workouts: any[] = querySnapshot.docs.map(d => d.data());
                 
-                const today = new Date();
-                const sevenDaysAgoDate = new Date();
-                sevenDaysAgoDate.setDate(today.getDate() - 7);
-                const sevenDaysAgoStr = sevenDaysAgoDate.toISOString().split('T')[0];
+                const now = new Date();
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(now.getDate() - 30);
+                thirtyDaysAgo.setHours(0,0,0,0);
 
-                const recentWorkouts = workouts.filter(w => w.date >= sevenDaysAgoStr);
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(now.getDate() - 7);
+                sevenDaysAgo.setHours(0,0,0,0);
+
+                const recentWorkouts = workouts.filter(w => parseDate(w.date) >= sevenDaysAgo);
+                const monthlyWorkouts = workouts.filter(w => parseDate(w.date) >= thirtyDaysAgo);
 
                 // 4. Calculate Frequency
                 const sCurr = recentWorkouts.filter(w => w.category === 'strength').length;
@@ -108,7 +121,7 @@ export default function HomePage() {
 
                 // 5. Calculate Activity Progress
                 const targetActivity = goals.activity || 'Run';
-                const matchingWorkouts = workouts.filter(w => 
+                const matchingWorkouts = monthlyWorkouts.filter(w => 
                     w.activity?.toLowerCase() === targetActivity.toLowerCase()
                 );
 

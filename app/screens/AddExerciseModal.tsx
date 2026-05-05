@@ -119,6 +119,9 @@ export default function AddExerciseModal({ visible, onClose, onAdd, customList, 
       id: Date.now().toString(),
       name: selectedName,
       category,
+      metricType: category === 'cardio' 
+        ? (['Stairs', 'StairMaster'].includes(selectedName) ? 'FLOORS' : (selectedName === 'Swimming' ? 'LENGTHS' : 'DISTANCE'))
+        : 'WEIGHT',
       ...(category === 'cardio' ? {
         duration,
         metricValue,

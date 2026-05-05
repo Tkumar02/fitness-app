@@ -69,19 +69,39 @@ export default function ReviewProgression() {
         if (!user?.uid) return;
         const q = query(collection(db, 'workouts'), where('userId', '==', user.uid), orderBy('date', 'desc'));
         const unsub = onSnapshot(q, (snapshot) => {
-            setWorkouts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            const data: any[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Sort in-memory to handle legacy date formats (descending)
+            data.sort((a, b) => parseDate(b.date).getTime() - parseDate(a.date).getTime());
+            
+            setWorkouts(data);
             setLoading(false);
             setRefreshing(false);
         });
         return () => unsub();
     }, [user]);
 
+    // Helper to safely parse dates in multiple formats
+    const parseDate = (dateStr: string) => {
+        if (!dateStr) return new Date(0);
+        if (dateStr.includes('/')) {
+            const [d, m, y] = dateStr.split('/');
+            return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+        }
+        return new Date(dateStr);
+    };
+
     // 2. Logic & Filters
     const filteredWorkouts = useMemo(() => {
         return workouts.filter(w => {
             const matchesCat = categoryFilter === 'all' || w.category === categoryFilter;
             const matchesAct = selectedActivity === 'All Exercises' || w.activity === selectedActivity;
-            const matchesDate = !selectedDate || w.date === selectedDate.toISOString().split('T')[0];
+            
+            let matchesDate = true;
+            if (selectedDate) {
+                const wDate = parseDate(w.date);
+                matchesDate = wDate.toDateString() === selectedDate.toDateString();
+            }
+            
             return matchesCat && matchesAct && matchesDate;
         });
     }, [workouts, categoryFilter, selectedActivity, selectedDate]);
@@ -179,7 +199,7 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                         {item.goalMet ? <Text style={{marginRight: 12}}>🏆</Text> : null}
                         <TouchableOpacity onPress={() => {
                             setEditingWorkout(item);
-                            setEditDate(item.date); // ADD THIS LINE
+                            setEditDate(item.date);
                             setEditSets(item.sets?.toString() || '');
                             setEditReps(item.reps?.toString() || '');
                             setEditWeight(item.weight?.toString() || '');
@@ -190,7 +210,7 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                             setEditNotes(item.notes || ''); 
                             setEditModalVisible(true);
                             const displayValue = item.metricType === 'DISTANCE' ? item.distance : item.metricValue;
-    setEditDistance(displayValue?.toString() || '');
+                            setEditDistance(displayValue?.toString() || '');
                         }}><Ionicons name="create-outline" size={20} color={theme.accent} style={{marginRight: 15}} /></TouchableOpacity>
                         <TouchableOpacity onPress={() => handleDelete(item.id)}><Ionicons name="trash-outline" size={18} color={theme.subtext} /></TouchableOpacity>
                     </View>
@@ -276,11 +296,18 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                                 const unit = item.unit?.replace('/h', '') || 'km';
                                 return (
                                     <Text style={[styles.performanceText, { color: theme.subtext }]}>
-                                        Avg Pace: <Text style={{ color: theme.success }}>{mins}:${secs < 10 ? '0' : ''}${secs}/{unit}</Text>
+                                        Avg Pace: <Text style={{ color: theme.success }}>{mins}:{secs < 10 ? '0' : ''}{secs}/{unit}</Text>
                                     </Text>
                                 );
                             }
-                            return <Text style={[styles.performanceText, { color: theme.subtext }]}>Type: Cardio</Text>;
+                            if (item.metricType === 'LEVEL' && item.intensity > 0) {
+                                return (
+                                    <Text style={[styles.performanceText, { color: theme.subtext }]}>
+                                        Intensity: <Text style={{ color: theme.success }}>Level {item.intensity}</Text>
+                                    </Text>
+                                );
+                            }
+                            return <Text style={[styles.performanceText, { color: theme.subtext }]}>Type: {item.activity || 'Cardio'}</Text>;
                         })()
                     )}
                 </View>

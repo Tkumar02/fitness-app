@@ -100,7 +100,18 @@ export default function GoalsPage() {
 
         // Pull completed workouts where goalMet was flagged true
         const unsubDone = onSnapshot(query(collection(db, 'workouts'), where('userId', '==', user.uid), where('goalMet', '==', true), orderBy('date', 'desc')), (snap) => {
-            setCompletedGoals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            const data: any[] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Helper for parsing dates (internal to listener or we can pull it out)
+            const parseDate = (dateStr: string) => {
+                if (!dateStr) return new Date(0);
+                if (dateStr.includes('/')) {
+                    const [d, m, y] = dateStr.split('/');
+                    return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+                }
+                return new Date(dateStr);
+            };
+            data.sort((a, b) => parseDate(b.date).getTime() - parseDate(a.date).getTime());
+            setCompletedGoals(data);
         });
 
         return () => { unsubCustom(); unsubActive(); unsubDone(); };
