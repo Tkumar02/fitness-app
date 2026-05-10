@@ -184,6 +184,11 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                 <View style={styles.cardHeader}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <Text style={styles.dateText}>{item.date}</Text>
+                        {item.calories > 0 && (
+                            <View style={[styles.rpeBadge, { backgroundColor: theme.success + '20' }]}>
+                                <Text style={[styles.rpeBadgeText, { color: theme.success }]}>{Math.round(item.calories)} kcal</Text>
+                            </View>
+                        )}
                         {rpeValue > 0 && (
                             <View style={[styles.rpeBadge, { backgroundColor: getRPEColor(rpeValue) + '20' }]}>
                                 <Text style={[styles.rpeBadgeText, { color: getRPEColor(rpeValue) }]}>RPE {rpeValue}</Text>
@@ -221,96 +226,82 @@ await updateDoc(doc(db, 'workouts', editingWorkout.id), {
                 <View style={styles.statsRow}>
                     {item.category === 'strength' ? (
                         <>
-        <View>
-            <Text style={styles.statLabel}>Sets</Text>
-            <Text style={[styles.statValue, {color: theme.text}]}>{item.sets}</Text>
-        </View>
-        <View>
-            <Text style={styles.statLabel}>{item.strengthMetric === 'time' ? 'Secs' : 'Reps'}</Text>
-            <Text style={[styles.statValue, {color: theme.text}]}>{item.reps}</Text>
-        </View>
-        <View>
-            <Text style={styles.statLabel}>Weight</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={[styles.statValue, {color: theme.accent}]}>
-{item.isBW ? (
-                item.addedWeight > 0 
-                    ? `BW + ${item.addedWeight}${item.weightUnit || 'kg'}` 
-                    : 'BW'
-            ) : (
-                `${item.weight}${item.weightUnit || 'kg'}`
-            )}
-                </Text>
-            </View>
-        </View>
-    </>
-) : (
-// Inside the cardio branch of renderWorkoutItem:
-<>
-    <View>
-        <Text style={styles.statLabel}>Min</Text>
-        <Text style={[styles.statValue, {color: theme.success}]}>{item.duration}</Text>
-    </View>
- <View>
-     <Text style={styles.statLabel}>
-         {/* Use metricType (FLOORS/LEVEL) if it exists, otherwise default to unit (KM/MI) */}
-         {item.metricType && item.metricType !== 'DISTANCE' ? item.metricType : (item.unit?.toUpperCase() || 'KM')}
-     </Text>
-     <Text style={[styles.statValue, {color: theme.success}]}>
-         {/* Logical OR: Show metricValue if it exists (>0), otherwise show distance */}
-         {(item.metricValue > 0 ? item.metricValue : item.distance) || 0}
-     </Text>
- </View>
-</>
+                            <View>
+                                <Text style={styles.statLabel}>Sets</Text>
+                                <Text style={[styles.statValue, {color: theme.text}]}>{item.sets || 0}</Text>
+                            </View>
+                            <View>
+                                <Text style={styles.statLabel}>{item.strengthMetric === 'time' ? 'Secs' : 'Reps'}</Text>
+                                <Text style={[styles.statValue, {color: theme.text}]}>{item.reps || 0}</Text>
+                            </View>
+                            <View>
+                                <Text style={styles.statLabel}>Weight</Text>
+                                <Text style={[styles.statValue, {color: theme.accent}]}>
+                                    {item.isBW ? (
+                                        (item.addedWeight || 0) > 0 
+                                            ? `BW + ${item.addedWeight}${item.weightUnit || 'kg'}` 
+                                            : 'BW'
+                                    ) : (
+                                        `${item.weight || 0}${item.weightUnit || 'kg'}`
+                                    )}
+                                </Text>
+                            </View>
+                        </>
+                    ) : (
+                        <>
+                            <View>
+                                <Text style={styles.statLabel}>Min</Text>
+                                <Text style={[styles.statValue, {color: theme.success}]}>{item.duration || 0}</Text>
+                            </View>
+                            <View>
+                                <Text style={styles.statLabel}>
+                                    {item.metricType && item.metricType !== 'DISTANCE' ? item.metricType : (item.unit?.toUpperCase() || 'KM')}
+                                </Text>
+                                <Text style={[styles.statValue, {color: theme.success}]}>
+                                    {(item.metricValue > 0 ? item.metricValue : item.distance) || 0}
+                                </Text>
+                            </View>
+                        </>
                     )}
                 </View>
 
                 <View style={[styles.performanceRow, { borderTopColor: isDark ? '#333' : '#eee' }]}>
-                <View style={{ flexDirection: 'row', gap: 15, flex: 1 }}>
-                    {item.category === 'strength' ? (
-                        <>
-                            {/* ONLY SHOW IF GREATER THAN 0 */}
-                            {c1RM > 0 && (
-                                <Text style={[styles.performanceText, { color: theme.text }]}>
-                                    1RM: {c1RM}{item.weightUnit || 'kg'}
-                                </Text>
-                            )}
-                            {totalVolume > 0 && (
-                                <Text style={[styles.performanceText, { color: theme.subtext }]}>
-                                    Vol: <Text style={{ color: theme.text }}>{totalVolume.toLocaleString()}{item.weightUnit || 'kg'}</Text>
-                                </Text>
-                            )}
-                            {/* IF BOTH ARE 0 (Standard BW), show a simple label */}
-                            {c1RM === 0 && totalVolume === 0 && (
-                                <Text style={[styles.performanceText, { color: theme.subtext }]}>Bodyweight Session</Text>
-                            )}
-                        </>
-                    ) : (
-                        (() => {
-                            const dur = Number(item.duration);
-                            const dist = Number(item.distance);
-                            if (dur > 0 && dist > 0) {
-                                const paceDec = dur / dist;
-                                const mins = Math.floor(paceDec);
-                                const secs = Math.round((paceDec - mins) * 60);
-                                const unit = item.unit?.replace('/h', '') || 'km';
-                                return (
-                                    <Text style={[styles.performanceText, { color: theme.subtext }]}>
-                                        Avg Pace: <Text style={{ color: theme.success }}>{mins}:{secs < 10 ? '0' : ''}{secs}/{unit}</Text>
+                    <View style={{ flexDirection: 'row', gap: 15, flex: 1 }}>
+                        {item.category === 'strength' ? (
+                            <>
+                                {c1RM > 0 && (
+                                    <Text style={[styles.performanceText, { color: theme.text }]}>
+                                        1RM: {c1RM}{item.weightUnit || 'kg'}
                                     </Text>
-                                );
-                            }
-                            if (item.metricType === 'LEVEL' && item.intensity > 0) {
-                                return (
+                                )}
+                                {totalVolume > 0 && (
                                     <Text style={[styles.performanceText, { color: theme.subtext }]}>
-                                        Intensity: <Text style={{ color: theme.success }}>Level {item.intensity}</Text>
+                                        Vol: <Text style={{ color: theme.text }}>{totalVolume.toLocaleString()}{item.weightUnit || 'kg'}</Text>
                                     </Text>
-                                );
-                            }
-                            return <Text style={[styles.performanceText, { color: theme.subtext }]}>Type: {item.activity || 'Cardio'}</Text>;
-                        })()
-                    )}
-                </View>
+                                )}
+                                {c1RM === 0 && totalVolume === 0 && (
+                                    <Text style={[styles.performanceText, { color: theme.subtext }]}>Bodyweight Session</Text>
+                                )}
+                            </>
+                        ) : (
+                            (() => {
+                                const dur = Number(item.duration);
+                                const dist = Number(item.distance);
+                                if (dur > 0 && dist > 0) {
+                                    const paceDec = dur / dist;
+                                    const mins = Math.floor(paceDec);
+                                    const secs = Math.round((paceDec - mins) * 60);
+                                    const unit = item.unit?.replace('/h', '') || 'km';
+                                    return (
+                                        <Text style={[styles.performanceText, { color: theme.subtext }]}>
+                                            Avg Pace: <Text style={{ color: theme.success }}>{mins}:{secs < 10 ? '0' : ''}{secs}/{unit}</Text>
+                                        </Text>
+                                    );
+                                }
+                                return <Text style={[styles.performanceText, { color: theme.subtext }]}>{item.activity}</Text>;
+                            })()
+                        )}
+                    </View>
                     {item.notes && (
                         <TouchableOpacity style={styles.notesBtn} onPress={() => setExpandedNotes(prev => ({...prev, [item.id]: !prev[item.id]}))}>
                             <Text style={styles.notesBtnText}>{isNoteExpanded ? 'Hide' : 'Notes'}</Text>

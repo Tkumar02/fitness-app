@@ -118,25 +118,54 @@ const handleFinishExercise = async () => {
 
   // 1. Construct the exercise record
   const exerciseRecord = {
-    userId: user?.uid,
-    activity: currentEx.name,
-    category: currentEx.category,
-    metricType: currentEx.metricType || (currentEx.category === 'cardio' ? 'DISTANCE' : 'WEIGHT'),
-    // Use JS Date for the array-compatible version
-    createdAt: new Date().toISOString(), 
-    date: new Date().toISOString().split('T')[0],
-    reps: currentEx.reps || 0,
-    sets: currentEx.sets || 0,
-    weightUnit: currentEx.weightUnit || 'kg',
-    strengthMetric: currentEx.strengthMetric || 'reps',
-    weight: currentEx.weight || 0,
-    distance: currentEx.metricValue || 0,
-    intensity: currentEx.intensity || 0,
-    duration: currentEx.duration || 0,
-    unit: currentEx.unit || 'km',
-    actualTimeSec: durationSeconds,
-  };
+      userId: user?.uid,
+      activity: currentEx.name,
+      category: currentEx.category,
+      metricType: currentEx.metricType || (currentEx.category === 'cardio' ? 'DISTANCE' : 'WEIGHT'),
+      createdAt: new Date().toISOString(), 
+      date: new Date().toISOString().split('T')[0],
+      reps: currentEx.reps || 0,
+      sets: currentEx.sets || 0,
+      weightUnit: currentEx.weightUnit || 'kg',
+      strengthMetric: currentEx.strengthMetric || 'reps',
+      weight: currentEx.weight || 0,
+      distance: currentEx.metricValue || 0,
+      intensity: currentEx.intensity || 0,
+      duration: currentEx.duration || 0,
+      unit: currentEx.unit || 'km',
+      actualTimeSec: durationSeconds,
+      calories: 0 // Default
+    };
 
+    // Calculate calories if biometrics exist
+    if (user?.weight && user?.dob && user?.height && (exerciseRecord.duration > 0)) {
+        const birthDate = new Date(user.dob);
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+        }
+
+        const stats = {
+            category: exerciseRecord.category,
+            activity: exerciseRecord.activity,
+            duration: exerciseRecord.duration,
+            sets: exerciseRecord.sets,
+            reps: exerciseRecord.reps,
+            weightUsed: exerciseRecord.weight,
+            rpe: exerciseRecord.intensity || 5 // Default RPE 5 if not set
+        };
+
+        const biometrics = {
+            weight: parseFloat(user.weight),
+            height: parseFloat(user.height),
+            age: age,
+            sex: user.sex || 'male'
+        };
+
+        exerciseRecord.calories = require('@/utils/calorieCalculator').calculateCalories(stats, biometrics);
+    }
   try {
     // 2. SAVE INDIVIDUAL (Still uses serverTimestamp for the standalone doc)
     await addDoc(collection(db, 'workouts'), {

@@ -26,6 +26,7 @@ export default function ProfilePage() {
     const [dob, setDob] = useState('');
     const [height, setHeight] = useState('');
     const [weight, setWeight] = useState('');
+    const [sex, setSex] = useState<'male' | 'female'>('male');
     const [loading, setLoading] = useState(false);
 
     // Load existing data if it exists
@@ -40,6 +41,7 @@ export default function ProfilePage() {
                 setDob(data.dob || '');
                 setHeight(data.height || '');
                 setWeight(data.weight || '');
+                setSex(data.sex || 'male');
             }
         };
         loadProfile();
@@ -58,8 +60,6 @@ export default function ProfilePage() {
 
         setLoading(true);
         try {
-            // Only check for username uniqueness if the username has changed
-            // For now, we'll keep your original logic but wrapped in the new UI
             await setDoc(doc(db, 'users', user.uid), {
                 uid: user.uid,
                 email: user.email,
@@ -68,6 +68,7 @@ export default function ProfilePage() {
                 dob,
                 height,
                 weight,
+                sex,
             }, { merge: true });
 
             Alert.alert('Success', 'Profile updated!');
@@ -148,6 +149,29 @@ export default function ProfilePage() {
                                 value={weight} 
                                 onChangeText={setWeight} 
                             />
+                        </View>
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Biological Sex</Text>
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            {(['male', 'female'] as const).map((option) => (
+                                <TouchableOpacity 
+                                    key={option}
+                                    style={{
+                                        flex: 1,
+                                        padding: 15,
+                                        borderRadius: 12,
+                                        backgroundColor: sex === option ? '#007AFF' : (isDark ? '#2c2c2e' : '#f2f2f7'),
+                                        alignItems: 'center'
+                                    }}
+                                    onPress={() => setSex(option)}
+                                >
+                                    <Text style={{ color: sex === option ? '#fff' : (isDark ? '#fff' : '#000'), fontWeight: '600', textTransform: 'capitalize' }}>
+                                        {option}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
                         </View>
                     </View>
 

@@ -124,23 +124,48 @@ const handleWebDateChange = (val: string) => {
 const handleSaveWorkout = async () => {
     if (loading) return;
     if (!user?.uid || !activity) return Alert.alert("Error", "Select activity");
-    
+
     setLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     const mVal = parseFloat(metricValue) || 0;
     const dur = parseFloat(duration) || 0;
-    
-    // let finalDistance = mVal; 
-    // if (workoutType === 'cardio' && currentMetric === 'DISTANCE' && focus === 'performance') {
-    //     finalDistance = parseFloat((mVal * (dur / 60)).toFixed(2));
-    // }
+    const weightVal = parseFloat(weight) || 0;
 
+    // Calculate Calories
+    let caloriesBurned = 0;
+    if (user.weight && user.dob && user.height && dur > 0) {
+        const birthDate = new Date(user.dob);
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+        }
+
+        const stats = {
+            category: workoutType,
+            activity: activity,
+            duration: dur,
+            sets: parseInt(sets) || 0,
+            reps: parseInt(reps) || 0,
+            weightUsed: weightVal,
+            rpe: rpe
+        };
+
+        const biometrics = {
+            weight: parseFloat(user.weight),
+            height: parseFloat(user.height),
+            age: age,
+            sex: user.sex || 'male'
+        };
+
+        caloriesBurned = require('@/utils/calorieCalculator').calculateCalories(stats, biometrics);
+    }
     let finalDistance = mVal; 
-    
+
     if (workoutType === 'cardio') {
         if (activity === 'Swimming') {
-            // Calculate distance: (Number of lengths * Pool Size) / 1000 to get KM
             const meters = mVal * parseFloat(poolLength);
             finalDistance = unit === 'km' ? meters / 1000 : (meters / 1000) * 0.621371;
         } else if (currentMetric === 'DISTANCE' && focus === 'performance') {
@@ -152,7 +177,7 @@ const handleSaveWorkout = async () => {
         const goalsRef = collection(db, 'users', user.uid, 'activeGoals');
         const q = query(goalsRef, where('activity', '==', activity));
         const goalSnap = await getDocs(q);
-        
+
         let metGoalId = null;
         let isGoalAchieved = false;
 
@@ -189,6 +214,7 @@ const handleSaveWorkout = async () => {
             intensity: parseFloat(intensity) || 0,
             distance: (currentMetric === 'DISTANCE' || currentMetric === 'LENGTHS') ? finalDistance : null,
             duration: dur,
+            calories: caloriesBurned,
             unit: workoutType === 'cardio' 
                 ? (focus === 'performance' && currentMetric === 'DISTANCE' ? `${unit}/h` : unit) 
                 : null,            
@@ -206,7 +232,6 @@ const handleSaveWorkout = async () => {
             achievedGoalId: metGoalId,
             createdAt: serverTimestamp(),
         });
-
         if (isGoalAchieved && metGoalId) {
             await deleteDoc(doc(db, 'users', user.uid, 'activeGoals', metGoalId));
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -443,6 +468,19 @@ const handleSelectActivity = (name: string, metric?: string) => {
         </View>
         <TextInput style={styles.input} placeholder="0" placeholderTextColor="#222" keyboardType="numeric" value={reps} onChangeText={setReps} />
     </View>
+</View>
+
+<View style={{ marginTop: 20 }}>
+    <Text style={styles.label}>DURATION (MINUTES)</Text>
+    <Text style={{fontSize: 9, color: '#666', marginBottom: 5}}>* Required for calorie calculation</Text>
+    <TextInput 
+        style={styles.input} 
+        placeholder="0" 
+        placeholderTextColor="#222" 
+        keyboardType="numeric" 
+        value={duration} 
+        onChangeText={setDuration} 
+    />
 </View>
                 </View>
             )}
