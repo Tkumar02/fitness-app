@@ -2,9 +2,9 @@ import { UserContext } from '@/context/UserContext';
 import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import React, { useContext, useEffect, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
 // Import your modal component
 import AddExerciseModal from '../screens/AddExerciseModal';
 
@@ -18,28 +18,49 @@ export default function CreateRegime() {
 
   // State
   const [regimeName, setRegimeName] = useState('');
+  const [description, setDescription] = useState('');
   const [exercises, setExercises] = useState<any[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [customExercises, setCustomExercises] = useState<any[]>([]);
+  
+  // Trainer features
+  const [clients, setClients] = useState<any[]>([]);
+  const [sharedWith, setSharedWith] = useState<string[]>([]);
 
   // 1. Handle Pre-population and Reset
   useEffect(() => {
     if (editingTemplate) {
       setRegimeName(editingTemplate.name || '');
+      setDescription(editingTemplate.description || '');
       setExercises(editingTemplate.exercises || []);
+      setSharedWith(editingTemplate.sharedWith || []);
     } else {
       setRegimeName('');
+      setDescription('');
       setExercises([]);
+      setSharedWith([]);
     }
   }, [editingTemplate, route.params]);
 
-  // 2. Fetch Custom Exercises (for the Modal)
+  // 2. Fetch Custom Exercises and Clients
   useEffect(() => {
     if (!user?.uid) return;
-    const q = query(collection(db, 'users', user.uid, 'customEquipment'));
-    return onSnapshot(q, (snap) => {
+    
+    // Fetch custom equipment
+    const qCustom = query(collection(db, 'users', user.uid, 'customEquipment'));
+    const unsubCustom = onSnapshot(qCustom, (snap) => {
       setCustomExercises(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
+
+    // Fetch clients if user is a trainer
+    if (user.role === 'trainer') {
+        const qClients = query(collection(db, 'users'), where('trainerId', '==', user.uid));
+        getDocs(qClients).then(snap => {
+            setClients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+    }
+
+    return () => unsubCustom();
   }, [user]);
 
   // 3. Logic to add exercise from Modal to List
@@ -51,13 +72,24 @@ export default function CreateRegime() {
     setExercises(prev => prev.filter(ex => ex.id !== id));
   };
 
+  const toggleClientSelection = (clientId: string) => {
+    setSharedWith(prev => 
+        prev.includes(clientId) 
+            ? prev.filter(id => id !== clientId) 
+            : [...prev, clientId]
+    );
+  };
+
   const handleSave = async () => {
     if (!regimeName.trim() || exercises.length === 0) return;
 
     const data = {
       name: regimeName,
+      description: description.trim(),
       exercises,
       userId: user?.uid,
+      creatorName: user?.name || user?.username || user?.email || 'Trainer',
+      sharedWith: user?.role === 'trainer' ? sharedWith : [],
       updatedAt: serverTimestamp(),
     };
 
@@ -91,6 +123,63 @@ export default function CreateRegime() {
         value={regimeName}
         onChangeText={setRegimeName}
       />
+
+      {user?.role === 'trainer' && (
+        <View style={{ marginBottom: 20 }}>
+            <Text style={[styles.sectionTitle, { color: isDark ? '#aaa' : '#555' }]}>ASSIGN TO CLIENTS</Text>
+            {clients.length === 0 ? (
+                <Text style={{ color: '#888', fontSize: 13, fontStyle: 'italic' }}>No clients have selected you as their trainer yet.</Text>
+            ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                    {clients.map(client => (
+                        <TouchableOpacity 
+                            key={client.id}
+                            style={{
+                                paddingHorizontal: 15,
+                                paddingVertical: 10,
+                                borderRadius: 20,
+                                backgroundColor: sharedWith.includes(client.id) ? '#007AFF' : (isDark ? '#1c1c1e' : '#fff'),
+                                borderWidth: 1,
+                                borderColor: sharedWith.includes(client.id) ? '#007AFF' : (isDark ? '#333' : '#ddd'),
+                            }}
+                            onPress={() => toggleClientSelection(client.id)}
+                        >
+                            <Text style={{ 
+                                color: sharedWith.includes(client.id) ? '#fff' : (isDark ? '#fff' : '#000'),
+                                fontWeight: '600',
+                                fontSize: 12
+                            }}>
+                                {client.name || client.username || client.email.split('@')[0]}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            )}
+        </View>
+      )}
+
+      {user?.role === 'trainer' && (
+        <View style={{ marginBottom: 20 }}>
+            <Text style={[styles.sectionTitle, { color: isDark ? '#aaa' : '#555' }]}>REGIME NOTES / VIDEO LINKS</Text>
+            <TextInput 
+                style={[styles.input, { 
+                    color: isDark ? '#fff' : '#000', 
+                    backgroundColor: isDark ? '#1c1c1e' : '#fff',
+                    borderColor: isDark ? '#333' : '#ddd',
+                    borderWidth: 1,
+                    height: 80,
+                    textAlignVertical: 'top',
+                    fontSize: 14,
+                    padding: 15
+                }]}
+                placeholder="Add instructions, video links, etc. (Optional)"
+                placeholderTextColor="#888"
+                multiline
+                value={description}
+                onChangeText={setDescription}
+            />
+        </View>
+      )}
 
       <Text style={[styles.sectionTitle, { color: isDark ? '#aaa' : '#555' }]}>EXERCISES</Text>
 

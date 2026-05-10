@@ -9,7 +9,7 @@ import {
   Alert,
   Platform, ScrollView,
   StyleSheet,
-  Text, TouchableOpacity,
+  Text, TextInput, TouchableOpacity,
   useColorScheme,
   View
 } from 'react-native';
@@ -19,6 +19,7 @@ type RouteParams = {
   ActiveRegime: {
     template?: any;
     sessionId?: string;
+    viewMode?: boolean;
   };
 };
 
@@ -32,6 +33,7 @@ export default function ActiveRegime() {
 
   const template = route.params?.template;
   const sessionId = route.params?.sessionId;
+  const viewMode = route.params?.viewMode;
 
   // State
   const [exerciseIndex, setExerciseIndex] = useState(0);
@@ -39,6 +41,8 @@ export default function ActiveRegime() {
   const [exerciseStartTime, setExerciseStartTime] = useState<Date | null>(null);
   const [sessionExercises, setSessionExercises] = useState<any[]>([]); 
   const [saving, setSaving] = useState(false);
+  const [exerciseNote, setExerciseNote] = useState('');
+  const [sessionNote, setSessionNote] = useState('');
   
   // Stopwatch state
   const [seconds, setSeconds] = useState(0);
@@ -106,6 +110,7 @@ export default function ActiveRegime() {
     setExerciseStartTime(new Date());
     setTimerActive(true);
     setSeconds(0);
+    setExerciseNote('');
   };
 
 const handleFinishExercise = async () => {
@@ -134,7 +139,8 @@ const handleFinishExercise = async () => {
       duration: currentEx.duration || 0,
       unit: currentEx.unit || 'km',
       actualTimeSec: durationSeconds,
-      calories: 0 // Default
+      calories: 0, // Default
+      notes: exerciseNote.trim(),
     };
 
     // Calculate calories if biometrics exist
@@ -188,6 +194,8 @@ const handleFinishExercise = async () => {
             endedAt: serverTimestamp(),
             exercises: updatedSession,
             date: new Date().toISOString().split('T')[0],
+            notes: sessionNote.trim(),
+            trainerId: template.userId !== user?.uid ? template.userId : null,
         });
       } else {
         // Fallback for sessions started without a tracked ID
@@ -198,6 +206,8 @@ const handleFinishExercise = async () => {
             status: 'completed',
             createdAt: serverTimestamp(),
             date: new Date().toISOString().split('T')[0],
+            notes: sessionNote.trim(),
+            trainerId: template.userId !== user?.uid ? template.userId : null,
         });
       }
 
@@ -237,78 +247,155 @@ const handleFinishExercise = async () => {
     style={{ 
       fontSize: 20, 
       fontWeight: '900', 
-      color: theme.success,
+      color: viewMode ? theme.accent : theme.success,
       letterSpacing: 2,
-      // The Glow Properties:
-      textShadowColor: theme.success, 
+      textShadowColor: viewMode ? theme.accent : theme.success, 
       textShadowOffset: { width: 0, height: 0 },
       textShadowRadius: 10 
     }}
   >
-    ACTIVE
+    {viewMode ? 'PREVIEW' : 'ACTIVE'}
   </Text>
 </Text>          <View style={{ width: 32 }} />
         </View>
 
-        <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
-          <View style={[styles.progressBar, { 
-            width: `${((exerciseIndex + 1) / template.exercises.length) * 100}%`,
-            backgroundColor: theme.accent 
-          }]} />
-        </View>
-
-        <View style={[styles.card, { backgroundColor: theme.card, shadowColor: isDark ? '#000' : '#999' }]}>
-          <Text style={[styles.label, { color: theme.accent }]}>
-            {currentEx.category?.toUpperCase()} • {exerciseIndex + 1} OF {template.exercises.length}
-          </Text>
-          <Text style={[styles.exName, { color: theme.text }]}>{currentEx.name}</Text>
-          
-          <View style={styles.detailRow}>
-            {currentEx.category === 'strength' ? (
-              <>
-                <DetailItem label="Sets" value={currentEx.sets} theme={theme} />
-                <DetailItem label={currentEx.strengthMetric === 'time' ? "Secs" : "Reps"} value={currentEx.reps} theme={theme} />
-                <DetailItem label="Load" value={`${currentEx.weight}${currentEx.unit || currentEx.weightUnit || 'kg'}`} theme={theme} />
-              </>
-            ) : (
-              <>
-                <DetailItem label="Mins" value={currentEx.duration} theme={theme} />
-                <DetailItem label="Goal" value={`${currentEx.metricValue}${currentEx.unit}`} theme={theme} />
-              </>
-            )}
-          </View>
-
-          {isStarted && (
-            <View style={styles.timerContainer}>
-              <Ionicons name="stopwatch-outline" size={20} color={theme.accent} />
-              <Text style={[styles.timerText, { color: theme.text }]}>{formatTime(seconds)}</Text>
+        {!viewMode && (
+            <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+            <View style={[styles.progressBar, { 
+                width: `${((exerciseIndex + 1) / template.exercises.length) * 100}%`,
+                backgroundColor: theme.accent 
+            }]} />
             </View>
-          )}
-        </View>
+        )}
 
-        <View style={styles.footer}>
-          {!isStarted ? (
-            <TouchableOpacity style={[styles.mainBtn, { backgroundColor: theme.accent }]} onPress={handleStartExercise}>
-              <Ionicons name="play" size={24} color="#FFF" />
-              <Text style={styles.btnText}>START EXERCISE</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.mainBtn, { backgroundColor: theme.success }]} 
-              onPress={handleFinishExercise}
-              disabled={saving}
-            >
-              {saving ? <ActivityIndicator color="#FFF" /> : (
-                <>
-                  <Ionicons name="checkmark-done" size={24} color="#FFF" />
-                  <Text style={styles.btnText}>
-                      {exerciseIndex + 1 === template.exercises.length ? 'FINISH REGIME' : 'COMPLETE & NEXT'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
+        {template.description && (
+            <View style={[styles.card, { backgroundColor: theme.card, marginBottom: 15, padding: 20 }]}>
+                <Text style={[styles.label, { color: theme.accent }]}>TRAINER NOTES / LINKS</Text>
+                <Text style={{ color: theme.text, fontSize: 14, lineHeight: 20 }}>{template.description}</Text>
+            </View>
+        )}
+
+        {viewMode ? (
+            <View style={{ padding: 20 }}>
+                {template.exercises.map((ex: any, idx: number) => (
+                    <View key={idx} style={[styles.card, { backgroundColor: theme.card, marginBottom: 15, padding: 25 }]}>
+                        <Text style={[styles.label, { color: theme.accent }]}>{ex.category?.toUpperCase()}</Text>
+                        <Text style={[styles.exName, { color: theme.text, fontSize: 24, marginBottom: 20 }]}>{ex.name}</Text>
+                        <View style={styles.detailRow}>
+                            {ex.category === 'strength' ? (
+                                <>
+                                    <DetailItem label="Sets" value={ex.sets} theme={theme} />
+                                    <DetailItem label={ex.strengthMetric === 'time' ? "Secs" : "Reps"} value={ex.reps} theme={theme} />
+                                    <DetailItem label="Load" value={`${ex.weight}${ex.unit || ex.weightUnit || 'kg'}`} theme={theme} />
+                                </>
+                            ) : (
+                                <>
+                                    <DetailItem label="Mins" value={ex.duration} theme={theme} />
+                                    <DetailItem label="Goal" value={`${ex.metricValue}${ex.unit}`} theme={theme} />
+                                </>
+                            )}
+                        </View>
+                    </View>
+                ))}
+            </View>
+        ) : (
+            <>
+                <View style={[styles.card, { backgroundColor: theme.card, shadowColor: isDark ? '#000' : '#999' }]}>
+                <Text style={[styles.label, { color: theme.accent }]}>
+                    {currentEx.category?.toUpperCase()} • {exerciseIndex + 1} OF {template.exercises.length}
+                </Text>
+                <Text style={[styles.exName, { color: theme.text }]}>{currentEx.name}</Text>
+                
+                <View style={styles.detailRow}>
+                    {currentEx.category === 'strength' ? (
+                    <>
+                        <DetailItem label="Sets" value={currentEx.sets} theme={theme} />
+                        <DetailItem label={currentEx.strengthMetric === 'time' ? "Secs" : "Reps"} value={currentEx.reps} theme={theme} />
+                        <DetailItem label="Load" value={`${currentEx.weight}${currentEx.unit || currentEx.weightUnit || 'kg'}`} theme={theme} />
+                    </>
+                    ) : (
+                    <>
+                        <DetailItem label="Mins" value={currentEx.duration} theme={theme} />
+                        <DetailItem label="Goal" value={`${currentEx.metricValue}${currentEx.unit}`} theme={theme} />
+                    </>
+                    )}
+                </View>
+
+                {isStarted && (
+                    <View style={{ width: '100%', marginTop: 30 }}>
+                        <View style={styles.timerContainer}>
+                            <Ionicons name="stopwatch-outline" size={20} color={theme.accent} />
+                            <Text style={[styles.timerText, { color: theme.text }]}>{formatTime(seconds)}</Text>
+                        </View>
+                        
+                        <View style={{ marginTop: 20 }}>
+                            <Text style={[styles.detailLabel, { color: theme.subtext, marginBottom: 8 }]}>EXERCISE NOTES</Text>
+                            <TextInput 
+                                style={{ 
+                                    backgroundColor: theme.background, 
+                                    color: theme.text, 
+                                    padding: 15, 
+                                    borderRadius: 12,
+                                    height: 80,
+                                    textAlignVertical: 'top'
+                                }}
+                                placeholder="How did it feel?"
+                                placeholderTextColor={theme.subtext}
+                                multiline
+                                value={exerciseNote}
+                                onChangeText={setExerciseNote}
+                            />
+                        </View>
+
+                        {exerciseIndex + 1 === template.exercises.length && (
+                            <View style={{ marginTop: 20 }}>
+                                <Text style={[styles.detailLabel, { color: theme.subtext, marginBottom: 8 }]}>FINAL SESSION COMMENTS</Text>
+                                <TextInput 
+                                    style={{ 
+                                        backgroundColor: theme.background, 
+                                        color: theme.text, 
+                                        padding: 15, 
+                                        borderRadius: 12,
+                                        height: 100,
+                                        textAlignVertical: 'top'
+                                    }}
+                                    placeholder="Overall feedback for your trainer..."
+                                    placeholderTextColor={theme.subtext}
+                                    multiline
+                                    value={sessionNote}
+                                    onChangeText={setSessionNote}
+                                />
+                            </View>
+                        )}
+                    </View>
+                )}
+                </View>
+
+                <View style={styles.footer}>
+                {!isStarted ? (
+                    <TouchableOpacity style={[styles.mainBtn, { backgroundColor: theme.accent }]} onPress={handleStartExercise}>
+                    <Ionicons name="play" size={24} color="#FFF" />
+                    <Text style={styles.btnText}>START EXERCISE</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <TouchableOpacity 
+                    style={[styles.mainBtn, { backgroundColor: theme.success }]} 
+                    onPress={handleFinishExercise}
+                    disabled={saving}
+                    >
+                    {saving ? <ActivityIndicator color="#FFF" /> : (
+                        <>
+                        <Ionicons name="checkmark-done" size={24} color="#FFF" />
+                        <Text style={styles.btnText}>
+                            {exerciseIndex + 1 === template.exercises.length ? 'FINISH REGIME' : 'COMPLETE & NEXT'}
+                        </Text>
+                        </>
+                    )}
+                    </TouchableOpacity>
+                )}
+                </View>
+            </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

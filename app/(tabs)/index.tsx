@@ -137,7 +137,9 @@ export default function HomePage() {
                 });
 
                 // 6. Motivation Logic
-                if (sTar + cTar > 0) {
+                if (user?.role === 'trainer') {
+                    setMotivation({ message: "Ready to guide your athletes?", icon: '🎓' });
+                } else if (sTar + cTar > 0) {
                     const total = sCurr + cCurr;
                     if (total >= (sTar + cTar)) setMotivation({ message: "Weekly goals smashed!", icon: '🔥' });
                     else if (total > 0) setMotivation({ message: `You're ${total} workouts in. Keep it up!`, icon: '⚡' });
@@ -198,7 +200,9 @@ export default function HomePage() {
                             <View style={styles.header}>
                                 <View style={styles.titleRow}>
                                     <View>
-                                        <Text style={[styles.welcome, { color: theme.subtext }]}>Welcome!</Text>
+                                        <Text style={[styles.welcome, { color: theme.subtext }]}>
+                                            {user?.role === 'trainer' ? 'Coach' : 'Welcome!'}
+                                        </Text>
                                         <Text style={[styles.user, { color: theme.text }]}>{username} 👋</Text>
                                     </View>
                                     <TouchableOpacity 
@@ -224,15 +228,40 @@ export default function HomePage() {
                             </View>
 
                             <View style={styles.menu}>
-                                <MenuButton 
-                                    title={hasActiveSession ? "Resume Workout" : "Log Workout"} 
-                                    emoji="🏋️" 
-                                    color={hasActiveSession ? theme.success : theme.accent} 
-                                    onPress={() => router.push(hasActiveSession ? '/(tabs)/TemplateList' : '/(tabs)/AddWorkout')}
-                                    badge={hasActiveSession ? "RESUME" : null}
-                                />
-                                <MenuButton title="Progression" emoji="📊" color="#5856D6" onPress={() => router.push('/(tabs)/ReviewWorkout')} />
-                                <MenuButton title="My Goals" emoji="🎯" color={theme.success} onPress={() => router.push('/(tabs)/Goals')} />
+                                {user?.role === 'trainer' ? (
+                                    <>
+                                        <MenuButton 
+                                            title="Manage Regimes" 
+                                            emoji="📋" 
+                                            color={theme.accent} 
+                                            onPress={() => router.push('/(tabs)/TemplateList')} 
+                                        />
+                                        <MenuButton 
+                                            title="Client Feed" 
+                                            emoji="👥" 
+                                            color={theme.success} 
+                                            onPress={() => router.push('/(tabs)/CommunityFeed')} 
+                                        />
+                                        <MenuButton 
+                                            title="Log Personal Workout" 
+                                            emoji="🏋️" 
+                                            color="#5856D6" 
+                                            onPress={() => router.push('/(tabs)/AddWorkout')} 
+                                        />
+                                    </>
+                                ) : (
+                                    <>
+                                        <MenuButton 
+                                            title={hasActiveSession ? "Resume Workout" : "Log Workout"} 
+                                            emoji="🏋️" 
+                                            color={hasActiveSession ? theme.success : theme.accent} 
+                                            onPress={() => router.push(hasActiveSession ? '/(tabs)/TemplateList' : '/(tabs)/AddWorkout')}
+                                            badge={hasActiveSession ? "RESUME" : null}
+                                        />
+                                        <MenuButton title="Progression" emoji="📊" color="#5856D6" onPress={() => router.push('/(tabs)/ReviewWorkout')} />
+                                        <MenuButton title="My Goals" emoji="🎯" color={theme.success} onPress={() => router.push('/(tabs)/Goals')} />
+                                    </>
+                                )}
                             </View>
 
                             <TouchableOpacity onPress={handleSignOut} style={styles.logout}>

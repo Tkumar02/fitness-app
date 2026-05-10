@@ -26,6 +26,7 @@ export default function SignupScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [role, setRole] = useState<'athlete' | 'trainer'>('athlete');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -45,7 +46,7 @@ export default function SignupScreen() {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            setUser({ uid: user.uid, email: user.email });
+            setUser({ uid: user.uid, email: user.email, role });
 
             await setDoc(doc(db, 'users', user.uid), {
                 email: user.email,
@@ -54,10 +55,15 @@ export default function SignupScreen() {
                 dob: '',
                 height: '',
                 weight: '',
+                role: role,
                 createdAt: new Date().toISOString(),
             });
 
-            router.replace('/(auth)/Profile');
+            if (role === 'trainer') {
+                router.replace('/(tabs)/TemplateList');
+            } else {
+                router.replace('/(auth)/Profile');
+            }
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -126,6 +132,32 @@ export default function SignupScreen() {
                                     style={styles.input}
                                     secureTextEntry
                                 />
+                            </View>
+                            <Text style={styles.label}>I am a...</Text>
+                            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                                {(['athlete', 'trainer'] as const).map((option) => (
+                                    <TouchableOpacity
+                                        key={option}
+                                        style={{
+                                            flex: 1,
+                                            padding: 15,
+                                            borderRadius: 15,
+                                            backgroundColor: role === option ? '#34C759' : '#f2f2f7',
+                                            alignItems: 'center',
+                                            borderWidth: 1,
+                                            borderColor: role === option ? '#34C759' : '#e5e5ea',
+                                        }}
+                                        onPress={() => setRole(option)}
+                                    >
+                                        <Text style={{
+                                            color: role === option ? '#fff' : '#8e8e93',
+                                            fontWeight: '700',
+                                            textTransform: 'capitalize'
+                                        }}>
+                                            {option === 'athlete' ? 'Athlete' : 'Trainer'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
                             </View>
                         </View>
 

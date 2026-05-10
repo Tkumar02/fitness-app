@@ -39,13 +39,19 @@ export default function LoginScreen() {
             await AsyncStorage.setItem('userUid', user.uid);
 
             const docSnap = await getDoc(doc(db, 'users', user.uid));
+            let userData = {};
             if (docSnap.exists()) {
-                setUser({ uid: user.uid, ...docSnap.data(), email: null });
+                userData = docSnap.data();
+                setUser({ uid: user.uid, ...userData, email: user.email });
             } else {
                 setUser({ uid: user.uid, email: user.email });
             }
 
-            router.replace('/homepage');
+            if ((userData as any)?.role === 'trainer') {
+                router.replace('/(tabs)/TemplateList');
+            } else {
+                router.replace('/homepage');
+            }
         } catch (err: any) {
             setError(err.message.includes('auth/invalid-credential') 
                 ? 'Invalid email or password' 

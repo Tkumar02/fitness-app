@@ -5,6 +5,8 @@ import React, { createContext, ReactNode, useEffect, useState } from 'react';
 type UserType = {
     uid: string;
     email: string | null;
+    role?: 'athlete' | 'trainer';
+    trainerId?: string;
     [key: string]: any; 
 };
 

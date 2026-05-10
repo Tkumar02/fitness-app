@@ -7,6 +7,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -31,6 +32,7 @@ export default function TemplateList() {
   const isDark = useColorScheme() === 'dark';
 
     const [templates, setTemplates] = useState<any[]>([]);
+    const [clientNames, setClientNames] = useState<Record<string, string>>({});
     const [activeSession, setActiveSession] = useState<any>(null);
 
     const theme = {
@@ -44,14 +46,55 @@ export default function TemplateList() {
     useEffect(() => {
         if (!user?.uid) return;
 
-        const qTemplates = query(
+        // Query for user's own templates
+        const qOwn = query(
             collection(db, 'templates'), 
             where('userId', '==', user.uid),
             orderBy('createdAt', 'desc')
         );
 
-        const unsubTemplates = onSnapshot(qTemplates, snap => {
-            setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        // Query for templates shared with the user
+        const qShared = query(
+            collection(db, 'templates'),
+            where('sharedWith', 'array-contains', user.uid)
+        );
+
+        const unsubOwn = onSnapshot(qOwn, async (snapOwn) => {
+            const ownTemplates = snapOwn.docs.map(d => ({ id: d.id, ...d.data() }));
+            
+            // If trainer, fetch names for sharedWith IDs
+            if (user.role === 'trainer') {
+                const allSharedWith = Array.from(new Set(ownTemplates.flatMap(t => t.sharedWith || [])));
+                const names: Record<string, string> = { ...clientNames };
+                let updated = false;
+                for (const uid of allSharedWith) {
+                    if (uid && !names[uid]) {
+                        const uDoc = await getDoc(doc(db, 'users', uid));
+                        if (uDoc.exists()) {
+                            names[uid] = uDoc.data().name || uDoc.data().username || uDoc.data().email.split('@')[0];
+                            updated = true;
+                        }
+                    }
+                }
+                if (updated) setClientNames(names);
+            }
+
+            // We need to merge them carefully to avoid duplicates and handle the second listener
+            setTemplates(prev => {
+                const shared = prev.filter(t => t.userId !== user.uid);
+                const merged = [...ownTemplates, ...shared];
+                return merged.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+            });
+        });
+
+        const unsubShared = onSnapshot(qShared, snapShared => {
+            const sharedTemplates = snapShared.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            setTemplates(prev => {
+                const own = prev.filter(t => t.userId === user.uid);
+                const merged = [...own, ...sharedTemplates];
+                return merged.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+            });
         });
 
         const qSessions = query(
@@ -70,7 +113,8 @@ export default function TemplateList() {
         });
 
         return () => {
-            unsubTemplates();
+            unsubOwn();
+            unsubShared();
             unsubSessions();
         };
     }, [user]);
@@ -192,15 +236,32 @@ const renderItem = ({ item }: { item: any }) => {
             </View>
             <Text style={{ color: theme.sub, fontSize: 12 }}>
               {item.exercises?.length || 0} exercises
+              {item.userId !== user?.uid && (
+                <Text style={{ color: theme.accent, fontWeight: '700' }}> • Supplied by {item.creatorName || 'Trainer'}</Text>
+              )}
             </Text>
+            {user?.role === 'trainer' && item.sharedWith && item.sharedWith.length > 0 && (
+                <Text style={{ color: theme.sub, fontSize: 11, marginTop: 4 }}>
+                    Assigned to: <Text style={{ color: theme.accent, fontWeight: '600' }}>
+                        {item.sharedWith.map((id: string) => clientNames[id] || 'Loading...').join(', ')}
+                    </Text>
+                </Text>
+            )}
           </View>
 
           <View style={styles.actions}>
+            <TouchableOpacity 
+              onPress={() => navigation.navigate('ActiveRegime', { template: item, viewMode: true })} 
+              style={[styles.viewBtn, { borderColor: theme.sub, borderWidth: 1 }]}
+            >
+              <Ionicons name="eye-outline" size={20} color={theme.sub} />
+            </TouchableOpacity>
+
             <TouchableOpacity onPress={() => startRegime(item)} style={[styles.playBtn, isActive && { backgroundColor: theme.text }]}>
-              <Ionicons name={isActive ? "eye" : "play"} size={20} color={isActive ? theme.card : "#000"} />
+              <Ionicons name={isActive ? "play" : "play"} size={20} color={isActive ? theme.card : "#000"} />
             </TouchableOpacity>
             
-            {!isActive && (
+            {!isActive && item.userId === user?.uid && (
                 <>
                     <TouchableOpacity
                       onPress={() =>
@@ -281,5 +342,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#a7ff83',
     padding: 10,
     borderRadius: 12
+  },
+  viewBtn: {
+    padding: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
   }
 });

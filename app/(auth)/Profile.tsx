@@ -1,6 +1,6 @@
 import { db } from '@/firebase';
 import { useRouter } from 'expo-router';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import React, { useContext, useEffect, useState } from 'react';
 import {
     Alert,
@@ -17,7 +17,7 @@ import {
 import { UserContext } from '../../context/UserContext';
 
 export default function ProfilePage() {
-    const { user } = useContext(UserContext);
+    const { user, setUser } = useContext(UserContext);
     const router = useRouter();
     const isDark = useColorScheme() === 'dark';
 
@@ -27,6 +27,13 @@ export default function ProfilePage() {
     const [height, setHeight] = useState('');
     const [weight, setWeight] = useState('');
     const [sex, setSex] = useState<'male' | 'female'>('male');
+    const [role, setRole] = useState<'athlete' | 'trainer'>('athlete');
+    const [blurb, setBlurb] = useState('');
+    const [isPublic, setIsPublic] = useState(false);
+    const [shareBio, setShareBio] = useState(true);
+    const [trainerId, setTrainerId] = useState('');
+    const [trainerEmailSearch, setTrainerEmailSearch] = useState('');
+    const [trainers, setTrainers] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
 
     // Load existing data if it exists
@@ -42,10 +49,45 @@ export default function ProfilePage() {
                 setHeight(data.height || '');
                 setWeight(data.weight || '');
                 setSex(data.sex || 'male');
+                setRole(data.role || 'athlete');
+                setBlurb(data.blurb || '');
+                setIsPublic(data.isPublic ?? false);
+                setShareBio(data.shareBio ?? true);
+                setTrainerId(data.trainerId || '');
             }
+
+            // Fetch PUBLIC trainers
+            const q = query(
+                collection(db, 'users'), 
+                where('role', '==', 'trainer'),
+                where('isPublic', '==', true)
+            );
+            const querySnapshot = await getDocs(q);
+            const trainersList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setTrainers(trainersList);
         };
         loadProfile();
     }, [user]);
+
+    const handleSearchTrainerByEmail = async () => {
+        if (!trainerEmailSearch.trim()) return;
+        setLoading(true);
+        try {
+            const q = query(collection(db, 'users'), where('email', '==', trainerEmailSearch.trim().toLowerCase()), where('role', '==', 'trainer'));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+                const tDoc = snap.docs[0];
+                setTrainerId(tDoc.id);
+                Alert.alert('Success', `Trainer ${tDoc.data().name || tDoc.data().email} selected!`);
+            } else {
+                Alert.alert('Not Found', 'No trainer found with that email address.');
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleSaveProfile = async () => {
         if (!user) {
@@ -60,7 +102,7 @@ export default function ProfilePage() {
 
         setLoading(true);
         try {
-            await setDoc(doc(db, 'users', user.uid), {
+            const profileData = {
                 uid: user.uid,
                 email: user.email,
                 username: username.trim(),
@@ -69,7 +111,16 @@ export default function ProfilePage() {
                 height,
                 weight,
                 sex,
-            }, { merge: true });
+                role,
+                blurb: role === 'trainer' ? blurb : '',
+                isPublic: role === 'trainer' ? isPublic : false,
+                shareBio: role === 'athlete' ? shareBio : false,
+                trainerId: role === 'athlete' ? trainerId : '',
+            };
+            await setDoc(doc(db, 'users', user.uid), profileData, { merge: true });
+            
+            // Update context
+            setUser({ ...user, ...profileData });
 
             Alert.alert('Success', 'Profile updated!');
             router.push('/(tabs)'); 
@@ -174,6 +225,127 @@ export default function ProfilePage() {
                             ))}
                         </View>
                     </View>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Account Role</Text>
+                        <View style={[styles.input, { backgroundColor: isDark ? '#2c2c2e' : '#f2f2f7', borderColor: 'transparent' }]}>
+                            <Text style={{ color: isDark ? '#fff' : '#000', fontWeight: '700', textTransform: 'capitalize' }}>
+                                {role}
+                            </Text>
+                        </View>
+                    </View>
+
+                    {role === 'trainer' && (
+                        <>
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Trainer Blurb (Optional)</Text>
+                                <TextInput 
+                                    style={[styles.input, { 
+                                        color: isDark ? '#fff' : '#000', 
+                                        backgroundColor: isDark ? '#2c2c2e' : '#f2f2f7',
+                                        height: 100,
+                                        textAlignVertical: 'top'
+                                    }]} 
+                                    placeholder="Tell your athletes about yourself..." 
+                                    placeholderTextColor="#8e8e93"
+                                    value={blurb} 
+                                    onChangeText={setBlurb}
+                                    multiline
+                                />
+                            </View>
+                            <TouchableOpacity 
+                                style={[styles.inputGroup, { flexDirection: 'row', alignItems: 'center', gap: 10 }]}
+                                onPress={() => setIsPublic(!isPublic)}
+                            >
+                                <Ionicons name={isPublic ? "checkbox" : "square-outline"} size={24} color={isPublic ? '#34C759' : '#8e8e93'} />
+                                <Text style={{ color: isDark ? '#fff' : '#000', fontWeight: '700' }}>Make Profile Publicly Searchable</Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
+
+                    {role === 'athlete' && (
+                        <>
+                            <TouchableOpacity 
+                                style={[styles.inputGroup, { flexDirection: 'row', alignItems: 'center', gap: 10 }]}
+                                onPress={() => setShareBio(!shareBio)}
+                            >
+                                <Ionicons name={shareBio ? "checkbox" : "square-outline"} size={24} color={shareBio ? '#34C759' : '#8e8e93'} />
+                                <Text style={{ color: isDark ? '#fff' : '#000', fontWeight: '700' }}>Share Bio (Weight, Height, Age) with Trainer</Text>
+                            </TouchableOpacity>
+
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Search Trainer by Email</Text>
+                                <View style={{ flexDirection: 'row', gap: 10 }}>
+                                    <TextInput 
+                                        style={[styles.input, { flex: 1, color: isDark ? '#fff' : '#000', backgroundColor: isDark ? '#2c2c2e' : '#f2f2f7' }]} 
+                                        placeholder="trainer@email.com" 
+                                        placeholderTextColor="#8e8e93"
+                                        value={trainerEmailSearch} 
+                                        onChangeText={setTrainerEmailSearch}
+                                        autoCapitalize="none"
+                                        keyboardType="email-address"
+                                    />
+                                    <TouchableOpacity 
+                                        style={{ backgroundColor: '#007AFF', padding: 15, borderRadius: 12, justifyContent: 'center' }}
+                                        onPress={handleSearchTrainerByEmail}
+                                    >
+                                        <Ionicons name="search" size={20} color="#fff" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Public Trainers</Text>
+                                <View style={{ gap: 10 }}>
+                                    {trainers.length === 0 ? (
+                                        <Text style={{ color: '#8e8e93', fontSize: 14, fontStyle: 'italic' }}>No public trainers available.</Text>
+                                    ) : (
+                                        trainers.map((t) => (
+                                            <View key={t.id}>
+                                                <TouchableOpacity 
+                                                    style={{
+                                                        padding: 15,
+                                                        borderRadius: 12,
+                                                        backgroundColor: trainerId === t.id ? '#34C759' : (isDark ? '#2c2c2e' : '#f2f2f7'),
+                                                        flexDirection: 'row',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center'
+                                                    }}
+                                                    onPress={() => setTrainerId(t.id)}
+                                                >
+                                                    <View>
+                                                        <Text style={{ color: trainerId === t.id ? '#fff' : (isDark ? '#fff' : '#000'), fontWeight: '700' }}>
+                                                            {t.name || t.username || 'Anonymous Trainer'}
+                                                        </Text>
+                                                        <Text style={{ color: trainerId === t.id ? 'rgba(255,255,255,0.7)' : '#8e8e93', fontSize: 12 }}>
+                                                            {t.email}
+                                                        </Text>
+                                                    </View>
+                                                    {trainerId === t.id && (
+                                                        <Text style={{ color: '#fff', fontWeight: '900' }}>SELECTED</Text>
+                                                    )}
+                                                </TouchableOpacity>
+                                                {trainerId === t.id && t.blurb && (
+                                                    <View style={{ 
+                                                        marginTop: 8, 
+                                                        padding: 12, 
+                                                        backgroundColor: isDark ? '#1c1c1e' : '#fff',
+                                                        borderRadius: 10,
+                                                        borderLeftWidth: 3,
+                                                        borderLeftColor: '#34C759'
+                                                    }}>
+                                                        <Text style={{ color: isDark ? '#fff' : '#444', fontSize: 13, fontStyle: 'italic' }}>
+                                                            "{t.blurb}"
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                        ))
+                                    )}
+                                </View>
+                            </View>
+                        </>
+                    )}
 
                     <TouchableOpacity 
                         style={[styles.saveBtn, { backgroundColor: loading ? '#ccc' : '#007AFF' }]} 
