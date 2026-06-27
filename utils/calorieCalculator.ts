@@ -48,15 +48,34 @@ const calculateStrengthCalories = (stats: WorkoutStats, user: UserBiometrics): n
         'Deadlift': 6.5, 
         'Shoulder Press': 4.5,
         'Pull Ups': 7.0,
-        'Dips': 6.0
+        'Dips': 6.0,
+        'Lunges': 5.5,
+        'Rows': 5.0,
+        'Bicep Curls': 3.5,
+        'Tricep Extensions': 3.5,
+        'Leg Press': 5.5,
+        'Lat Pulldown': 4.5,
+        'Cable Fly': 3.5,
     };
     
     const baseMET = intensityMap[stats.activity] || 4.5;
+    const sets = stats.sets || 1;
+    const reps = stats.reps || 1;
+    const weightUsed = stats.weightUsed || 0;
     
-    // Net Active Burn = (MET * WeightKg * TimeHours) * effortFactor
-    // We adjust for effort (RPE 1-10, 5 is baseline)
+    // 1. MET-based baseline from duration and body weight
     const effortMultiplier = Math.max(0.5, stats.rpe / 5); 
-    const calories = (baseMET * user.weight * (stats.duration / 60)) * effortMultiplier;
+    const metCalories = (baseMET * user.weight * (stats.duration / 60)) * effortMultiplier;
     
-    return Math.round(calories);
+    // 2. Volume-based component: total mechanical work
+    // Work (joules) = sets × reps × weight(kg) × gravity(9.81) × avg range of motion (~0.5m)
+    // 1 kcal = 4184 joules
+    // Muscles are ~25% efficient, so actual energy cost ≈ work / 0.25
+    const totalWork = sets * reps * weightUsed * 9.81 * 0.5; // joules
+    const volumeCalories = (totalWork / 0.25) / 4184; // kcal
+    
+    // 3. Blend both: use whichever is higher, with a bonus for high volume
+    const blended = Math.max(metCalories, volumeCalories) + (Math.min(metCalories, volumeCalories) * 0.3);
+    
+    return Math.round(blended);
 };

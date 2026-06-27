@@ -206,10 +206,11 @@ interface Regime {
       totalDurationSec: 0
     });
 
-    navigation.navigate('ActiveRegime', {
-      sessionId: sessionRef.id,
-      template: JSON.stringify(template)
-    });
+      navigation.navigate('ActiveRegime', {
+        sessionId: sessionRef.id,
+        template: JSON.stringify(template),
+        playlistMode: true,
+      });
   };
 
 // ================================

@@ -5,13 +5,13 @@ import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native'
 import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import React, { useContext, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Platform, ScrollView,
-  StyleSheet,
-  Text, TextInput, TouchableOpacity,
-  useColorScheme,
-  View
+    ActivityIndicator,
+    Alert,
+    Platform, ScrollView,
+    StyleSheet,
+    Text, TextInput, TouchableOpacity,
+    useColorScheme,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -43,6 +43,9 @@ export default function ActiveRegime() {
   const [sessionNote, setSessionNote] = useState('');
   const [showSummary, setShowSummary] = useState(false);
   const [viewMode, setViewMode] = useState(false);
+  const [playlistMode, setPlaylistMode] = useState(false);
+  const [completedExercises, setCompletedExercises] = useState<boolean[]>([]);
+  const [pauseOffset, setPauseOffset] = useState(0);
   
   // Stopwatch state
   const [seconds, setSeconds] = useState(0);
@@ -87,11 +90,18 @@ export default function ActiveRegime() {
 
   useEffect(() => {
     if (isFocused) {
-      const params = route.params;
-      const t = typeof params?.template === 'string' ? JSON.parse(params.template) : params?.template;
-      setTemplate(t);
-      setSessionId(params?.sessionId || null);
-      setViewMode(params?.viewMode || false);
+      const params = route.params ?? {};
+      let parsedTemplate = params.template;
+      if (typeof parsedTemplate === 'string') {
+        try {
+          parsedTemplate = JSON.parse(parsedTemplate);
+        } catch (e) {
+          console.error('Failed to parse template JSON', e);
+        }
+      }
+      setTemplate(parsedTemplate);
+      setSessionId(params.sessionId ?? null);
+      setViewMode(params.viewMode ?? false);
       setShowSummary(false);
 
       // If we have a sessionId, fetch the current progress
@@ -102,8 +112,8 @@ export default function ActiveRegime() {
                   if (data.exercises) {
                       setSessionExercises(data.exercises);
                       const nextIndex = data.exercises.length;
-                      if (nextIndex >= (t.exercises?.length || 0)) {
-                          setExerciseIndex((t.exercises?.length || 1) - 1);
+                      if (nextIndex >= (parsedTemplate?.exercises?.length || 0)) {
+                          setExerciseIndex((parsedTemplate?.exercises?.length || 1) - 1);
                           setShowSummary(true);
                       } else {
                           setExerciseIndex(nextIndex);
@@ -175,9 +185,10 @@ export default function ActiveRegime() {
     );
   };
 
-  const currentEx = template.exercises[exerciseIndex] || template.exercises[0];
+  const currentEx = (template?.exercises?.[exerciseIndex]) ?? (template?.exercises?.[0] ?? {});
 
   const handleStartExercise = async () => {
+    // Original start for single exercise (kept for compatibility)
     const startTime = new Date();
     setIsStarted(true);
     setExerciseStartTime(startTime);
@@ -196,6 +207,24 @@ export default function ActiveRegime() {
         }
     }
   };
+
+  // Start a specific exercise by index (used in playlist mode)
+  const startExerciseAt = (idx: number) => {
+    setExerciseIndex(idx);
+    const startTime = new Date();
+    setIsStarted(true);
+    setExerciseStartTime(startTime);
+    setTimerActive(true);
+    setSeconds(0);
+    setExerciseNote('');
+    if (sessionId) {
+        updateDoc(doc(db, 'workoutSessions', sessionId), {
+            currentExerciseStartedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        }).catch(e => console.error('Error updating start time:', e));
+    }
+  };
+
 
 const handleFinishExercise = async () => {
   setSaving(true);
@@ -228,7 +257,11 @@ const handleFinishExercise = async () => {
     };
 
     // Calculate calories if biometrics exist
-    if (user?.weight && user?.dob && user?.height && (exerciseRecord.duration > 0)) {
+    // Use actualTimeSec (stopwatch) as fallback duration for strength exercises
+    const effectiveDuration = exerciseRecord.duration > 0 
+        ? exerciseRecord.duration 
+        : Math.round(durationSeconds / 60);
+    if (user?.weight && user?.dob && user?.height && effectiveDuration > 0) {
         const birthDate = new Date(user.dob);
         const today = new Date();
         let age = today.getFullYear() - birthDate.getFullYear();
@@ -240,7 +273,7 @@ const handleFinishExercise = async () => {
         const stats = {
             category: exerciseRecord.category,
             activity: exerciseRecord.activity,
-            duration: exerciseRecord.duration,
+            duration: effectiveDuration,
             sets: exerciseRecord.sets,
             reps: exerciseRecord.reps,
             weightUsed: exerciseRecord.weight,
@@ -341,7 +374,7 @@ const handleFinalSubmit = async () => {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
+          <TouchableOpacity onPress={() => navigation.navigate('TemplateList')} style={styles.iconBtn}>
             <Ionicons name="close-circle" size={32} color={theme.subtext} />
           </TouchableOpacity>
 <Text style={[styles.title, { color: theme.text, textAlign: 'center' }]}>
@@ -422,7 +455,7 @@ const handleFinalSubmit = async () => {
             </View>
         ) : viewMode ? (
             <View style={{ padding: 20 }}>
-                {template.exercises.map((ex: any, idx: number) => (
+                {template?.exercises?.map((ex: any, idx: number) => (
                     <View key={idx} style={[styles.card, { backgroundColor: theme.card, marginBottom: 15, padding: 25 }]}>
                         <Text style={[styles.label, { color: theme.accent }]}>{ex.category?.toUpperCase()}</Text>
                         <Text style={[styles.exName, { color: theme.text, fontSize: 24, marginBottom: 20 }]}>{ex.name}</Text>
@@ -442,6 +475,16 @@ const handleFinalSubmit = async () => {
                         </View>
                     </View>
                 ))}
+                <TouchableOpacity
+                  style={[styles.mainBtn, { backgroundColor: theme.accent, marginTop: 20 }]}
+                  onPress={() => {
+                    setCompletedExercises(Array(template?.exercises?.length ?? 0).fill(false));
+                    setPlaylistMode(true);
+                  }}
+                >
+                  <Ionicons name="play" size={24} color="#FFF" />
+                  <Text style={styles.btnText}>START REGIME</Text>
+                </TouchableOpacity>
             </View>
         ) : (
             <>
@@ -494,30 +537,133 @@ const handleFinalSubmit = async () => {
                 )}
                 </View>
 
-                <View style={styles.footer}>
-                {!isStarted ? (
-                    <TouchableOpacity style={[styles.mainBtn, { backgroundColor: theme.accent }]} onPress={handleStartExercise}>
-                        <Ionicons name="play" size={24} color="#FFF" />
-                        <Text style={styles.btnText}>START EXERCISE</Text>
-                    </TouchableOpacity>
-                ) : (
-                    <TouchableOpacity 
-                    style={[styles.mainBtn, { backgroundColor: theme.success }]} 
-                    onPress={handleFinishExercise}
-                    disabled={saving}
-                    >
-                    {saving ? <ActivityIndicator color="#FFF" /> : (
-                        <>
-                        <Ionicons name="checkmark-done" size={24} color="#FFF" />
-                        <Text style={styles.btnText}>
-                            {exerciseIndex + 1 === template.exercises.length ? 'FINISH REGIME' : 'COMPLETE & NEXT'}
-                        </Text>
-                        </>
-                    )}
-                    </TouchableOpacity>
-                )}
-                </View>
+             <View style={styles.footer}>
+  <TouchableOpacity
+    style={[styles.mainBtn, { backgroundColor: theme.accent }]}
+    onPress={() => {
+      setCompletedExercises(Array(template.exercises.length).fill(false));
+      setPlaylistMode(true);
+    }}
+  >
+    <Ionicons name="play" size={24} color="#FFF" />
+    <Text style={styles.btnText}>START REGIME</Text>
+  </TouchableOpacity>
+</View>
             </>
+        )}
+        {/* Playlist Mode */}
+        {playlistMode && !showSummary && (
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+                {template.exercises.map((ex: any, idx: number) => (
+                    <View key={idx} style={[styles.card, { backgroundColor: theme.card, marginBottom: 15, padding: 20 }]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={[styles.exName, { color: theme.text, fontSize: 20 }]}>{ex.name}</Text>
+                            {completedExercises[idx] ? (
+                                <Ionicons name="checkmark-circle" size={28} color={theme.success} />
+                            ) : (
+                                <TouchableOpacity
+                                    style={[styles.mainBtn, { backgroundColor: theme.accent, paddingHorizontal: 15, paddingVertical: 8 }]}
+                                    onPress={() => {
+                                      if (isStarted && exerciseIndex === idx) {
+                                        // Pause: capture current seconds
+                                        setPauseOffset(seconds);
+                                        setTimerActive(false);
+                                        setIsStarted(false);
+                                      } else if (!isStarted && exerciseIndex === idx && pauseOffset > 0) {
+                                        // Resume from pause
+                                        const resumedStart = new Date(Date.now() - pauseOffset * 1000);
+                                        setExerciseStartTime(resumedStart);
+                                        setTimerActive(true);
+                                        setIsStarted(true);
+                                        setPauseOffset(0);
+                                      } else {
+                                        // Start a new exercise
+                                        setExerciseIndex(idx);
+                                        startExerciseAt(idx);
+                                        setPauseOffset(0);
+                                      }
+                                    }}
+                                    disabled={isStarted && exerciseIndex !== idx}
+                                >
+                                    <Ionicons name={isStarted && exerciseIndex === idx ? "pause" : "play"} size={20} color="#FFF" />
+                                    <Text style={styles.btnText}>{isStarted && exerciseIndex === idx ? 'PAUSE' : (pauseOffset > 0 && exerciseIndex === idx ? 'RESUME' : 'START')}</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                        {/* Details */}
+                        <View style={styles.detailRow}>
+                            {ex.category === 'strength' ? (
+                                <>
+                                    <DetailItem label="Sets" value={ex.sets} theme={theme} />
+                                    <DetailItem label={ex.strengthMetric === 'time' ? "Secs" : "Reps"} value={ex.reps} theme={theme} />
+                                    <DetailItem label="Load" value={`${ex.weight}${ex.unit || ex.weightUnit || 'kg'}`} theme={theme} />
+                                </>
+                            ) : (
+                                <>
+                                    <DetailItem label="Mins" value={ex.duration} theme={theme} />
+                                    <DetailItem label="Goal" value={`${ex.metricValue}${ex.unit}`} theme={theme} />
+                                </>
+                            )}
+                        </View>
+                        {((isStarted && exerciseIndex === idx) || (!isStarted && exerciseIndex === idx && pauseOffset > 0)) && (
+                            <View style={{ marginTop: 15 }}>
+                                <View style={styles.timerContainer}>
+                                    <Ionicons name="stopwatch-outline" size={20} color={theme.accent} />
+                                    <Text style={[styles.timerText, { color: theme.text }]}>{formatTime(seconds)}</Text>
+                                    {!isStarted && pauseOffset > 0 && (
+                                        <Text style={{ color: theme.subtext, fontSize: 12, marginLeft: 8 }}>PAUSED</Text>
+                                    )}
+                                </View>
+                                <View style={{ marginTop: 10 }}>
+                                    <Text style={[styles.detailLabel, { color: theme.subtext, marginBottom: 8 }]}>EXERCISE NOTES</Text>
+                                    <TextInput
+                                        style={{
+                                            backgroundColor: theme.background,
+                                            color: theme.text,
+                                            padding: 15,
+                                            borderRadius: 12,
+                                            height: 80,
+                                            textAlignVertical: 'top'
+                                        }}
+                                        placeholder="How did it feel?"
+                                        placeholderTextColor={theme.subtext}
+                                        multiline
+                                        value={exerciseNote}
+                                        onChangeText={setExerciseNote}
+                                    />
+                                    <TouchableOpacity
+                                        style={[styles.mainBtn, { backgroundColor: theme.success, marginTop: 15 }]}
+                                        onPress={async () => {
+                                            await handleFinishExercise();
+                                            // mark completed and check if all done
+                                            setCompletedExercises(prev => {
+                                                const copy = [...prev];
+                                                copy[idx] = true;
+                                                if (copy.every(Boolean)) {
+                                                    setPlaylistMode(false);
+                                                }
+                                                return copy;
+                                            });
+                                        }}
+                                        disabled={saving}
+                                    >
+                                        {saving ? <ActivityIndicator color="#FFF" /> : (
+                                            <>
+                                                <Ionicons name="checkmark-done" size={20} color="#FFF" />
+                                                <Text style={styles.btnText}>COMPLETE EXERCISE</Text>
+                                            </>
+                                        )}
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        )}
+                    </View>
+                ))}
+                {/* Exit playlist button */}
+                <TouchableOpacity style={[styles.mainBtn, { backgroundColor: theme.border, marginTop: 20 }]} onPress={() => setPlaylistMode(false)}>
+                    <Text style={[styles.btnText, { color: theme.text }]}>EXIT WORKOUT</Text>
+                </TouchableOpacity>
+            </ScrollView>
         )}
       </ScrollView>
     </SafeAreaView>
