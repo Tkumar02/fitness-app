@@ -1,8 +1,8 @@
 import { UserContext } from '@/context/UserContext';
 import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
-import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
+import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import React, { useContext, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -26,16 +26,14 @@ type RouteParams = {
 export default function ActiveRegime() {
   const { user } = useContext(UserContext);
   const navigation = useNavigation<any>();
-  const route = useRoute<RouteProp<RouteParams, 'ActiveRegime'>>();
+  const route = useRoute<any>(); 
   const isFocused = useIsFocused();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const template = route.params?.template;
-  const sessionId = route.params?.sessionId;
-  const viewMode = route.params?.viewMode;
-
   // State
+  const [template, setTemplate] = useState<any>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [exerciseIndex, setExerciseIndex] = useState(0);
   const [isStarted, setIsStarted] = useState(false);
   const [exerciseStartTime, setExerciseStartTime] = useState<Date | null>(null);
@@ -43,6 +41,8 @@ export default function ActiveRegime() {
   const [saving, setSaving] = useState(false);
   const [exerciseNote, setExerciseNote] = useState('');
   const [sessionNote, setSessionNote] = useState('');
+  const [showSummary, setShowSummary] = useState(false);
+  const [viewMode, setViewMode] = useState(false);
   
   // Stopwatch state
   const [seconds, setSeconds] = useState(0);
@@ -50,13 +50,23 @@ export default function ActiveRegime() {
 
   useEffect(() => {
     let interval: any;
-    if (timerActive) {
+    if (timerActive && exerciseStartTime) {
       interval = setInterval(() => {
-        setSeconds(prev => prev + 1);
+        const now = new Date();
+        const diff = Math.floor((now.getTime() - exerciseStartTime.getTime()) / 1000);
+        
+        // Safety cap: if timer exceeds 4 hours, auto-stop it to prevent "ghost" high numbers
+        if (diff > 14400) { 
+            setTimerActive(false);
+            setSeconds(14400);
+            return;
+        }
+        
+        setSeconds(diff);
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timerActive]);
+  }, [timerActive, exerciseStartTime]);
 
   const formatTime = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -77,11 +87,73 @@ export default function ActiveRegime() {
 
   useEffect(() => {
     if (isFocused) {
-      setExerciseIndex(0);
-      setIsStarted(false);
-      setSessionExercises([]);
+      const params = route.params;
+      const t = typeof params?.template === 'string' ? JSON.parse(params.template) : params?.template;
+      setTemplate(t);
+      setSessionId(params?.sessionId || null);
+      setViewMode(params?.viewMode || false);
+      setShowSummary(false);
+
+      // If we have a sessionId, fetch the current progress
+      if (params?.sessionId) {
+          getDoc(doc(db, 'workoutSessions', params.sessionId)).then(snap => {
+              if (snap.exists()) {
+                  const data = snap.data();
+                  if (data.exercises) {
+                      setSessionExercises(data.exercises);
+                      const nextIndex = data.exercises.length;
+                      if (nextIndex >= (t.exercises?.length || 0)) {
+                          setExerciseIndex((t.exercises?.length || 1) - 1);
+                          setShowSummary(true);
+                      } else {
+                          setExerciseIndex(nextIndex);
+                          // Check if currently in progress
+                          if (data.currentExerciseStartedAt) {
+                              const startTime = data.currentExerciseStartedAt.toDate();
+                              setExerciseStartTime(startTime);
+                              setIsStarted(true);
+                              setTimerActive(true);
+                          } else {
+                              setIsStarted(false);
+                              setTimerActive(false);
+                              setExerciseStartTime(null);
+                          }
+                      }
+                  }
+              }
+          });
+      } else {
+          // Reset only if no session (starting fresh)
+          setExerciseIndex(0);
+          setIsStarted(false);
+          setTimerActive(false);
+          setExerciseStartTime(null);
+          setSessionExercises([]);
+      }
     }
-  }, [isFocused]);
+  }, [isFocused, route.params]);
+
+  const handleAbandon = async () => {
+    const doAbandon = async () => {
+        if (sessionId) {
+            await updateDoc(doc(db, 'workoutSessions', sessionId), { 
+                status: 'abandoned', 
+                currentExerciseStartedAt: null,
+                endedAt: serverTimestamp() 
+            });
+        }
+        navigation.navigate('TemplateList');
+    };
+
+    if (Platform.OS === 'web') {
+        if (window.confirm("Abandon this workout? Progress won't be saved to session history.")) doAbandon();
+    } else {
+        Alert.alert("Abandon Workout?", "Progress won't be saved to session history.", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Abandon", style: "destructive", onPress: doAbandon }
+        ]);
+    }
+  };
 
   if (!template) {
     return (
@@ -103,14 +175,26 @@ export default function ActiveRegime() {
     );
   };
 
-  const currentEx = template.exercises[exerciseIndex];
+  const currentEx = template.exercises[exerciseIndex] || template.exercises[0];
 
-  const handleStartExercise = () => {
+  const handleStartExercise = async () => {
+    const startTime = new Date();
     setIsStarted(true);
-    setExerciseStartTime(new Date());
+    setExerciseStartTime(startTime);
     setTimerActive(true);
     setSeconds(0);
     setExerciseNote('');
+
+    if (sessionId) {
+        try {
+            await updateDoc(doc(db, 'workoutSessions', sessionId), {
+                currentExerciseStartedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+        } catch (e) {
+            console.error("Error saving start state:", e);
+        }
+    }
   };
 
 const handleFinishExercise = async () => {
@@ -139,7 +223,7 @@ const handleFinishExercise = async () => {
       duration: currentEx.duration || 0,
       unit: currentEx.unit || 'km',
       actualTimeSec: durationSeconds,
-      calories: 0, // Default
+      calories: 0, 
       notes: exerciseNote.trim(),
     };
 
@@ -173,65 +257,84 @@ const handleFinishExercise = async () => {
         exerciseRecord.calories = require('@/utils/calorieCalculator').calculateCalories(stats, biometrics);
     }
   try {
-    // 2. SAVE INDIVIDUAL (Still uses serverTimestamp for the standalone doc)
+    // 2. SAVE INDIVIDUAL 
     await addDoc(collection(db, 'workouts'), {
       ...exerciseRecord,
-      createdAt: serverTimestamp(), // This is fine here because it's top-level
+      createdAt: serverTimestamp(), 
     });
 
     const updatedSession = [...sessionExercises, exerciseRecord];
     setSessionExercises(updatedSession);
+
+    // Update the session doc in real-time as we go
+    if (sessionId) {
+        await updateDoc(doc(db, 'workoutSessions', sessionId), {
+            exercises: updatedSession,
+            currentExerciseStartedAt: null,
+            updatedAt: serverTimestamp()
+        });
+    }
 
     if (exerciseIndex + 1 < template.exercises.length) {
       setExerciseIndex(exerciseIndex + 1);
       setIsStarted(false);
       setExerciseStartTime(null);
     } else {
-      // 3. UPDATE/SAVE SESSION
-      if (sessionId) {
-        await updateDoc(doc(db, 'workoutSessions', sessionId), {
-            status: 'completed',
-            endedAt: serverTimestamp(),
-            exercises: updatedSession,
-            date: new Date().toISOString().split('T')[0],
-            notes: sessionNote.trim(),
-            trainerId: template.userId !== user?.uid ? template.userId : null,
-        });
-      } else {
-        // Fallback for sessions started without a tracked ID
-        await addDoc(collection(db, 'workoutSessions'), {
-            userId: user?.uid,
-            regimeName: template.name || template.title,
-            exercises: updatedSession,
-            status: 'completed',
-            createdAt: serverTimestamp(),
-            date: new Date().toISOString().split('T')[0],
-            notes: sessionNote.trim(),
-            trainerId: template.userId !== user?.uid ? template.userId : null,
-        });
-      }
-
-      navigation.setParams({ template: undefined, sessionId: undefined });
-
-      // 4. NAVIGATION
-      if (Platform.OS === 'web') {
-        // Simple browser alert for web
-        alert("Regime Completed! Redirecting to progress...");
-        navigation.navigate('ReviewWorkout');
-      } else {
-        Alert.alert(
-          "Regime Completed! 🎉", 
-          "Your progress has been updated.",
-          [{ text: "View Progress", onPress: () => navigation.navigate('ReviewWorkout') }]
-        );
-      }
+        setShowSummary(true);
     }
   } catch (e) {
     console.error("Firebase Save Error:", e);
-    alert("Error saving workout. Check console.");
+    alert("Error saving exercise. Check console.");
   } finally {
     setSaving(false);
   }
+};
+
+const handleFinalSubmit = async () => {
+    setSaving(true);
+    try {
+        console.log("Submitting workout. Template:", template);
+        const linkedTrainerId = template.userId !== user?.uid ? template.userId : user?.trainerId;
+        console.log("Assigned trainerId:", linkedTrainerId);
+
+        if (sessionId) {
+            await updateDoc(doc(db, 'workoutSessions', sessionId), {
+                status: 'completed',
+                endedAt: serverTimestamp(),
+                date: new Date().toISOString().split('T')[0],
+                notes: sessionNote.trim(),
+                trainerId: linkedTrainerId || null,
+            });
+        } else {
+            await addDoc(collection(db, 'workoutSessions'), {
+                userId: user?.uid,
+                regimeName: template.name || template.title,
+                exercises: sessionExercises,
+                status: 'completed',
+                createdAt: serverTimestamp(),
+                date: new Date().toISOString().split('T')[0],
+                notes: sessionNote.trim(),
+                trainerId: linkedTrainerId || null,
+            });
+        }
+
+        navigation.setParams({ template: undefined, sessionId: undefined });
+
+        if (Platform.OS === 'web') {
+            alert("Regime Completed! 🎉");
+            navigation.navigate('ReviewWorkout');
+        } else {
+            Alert.alert(
+                "Regime Completed! 🎉", 
+                "Your progress has been updated.",
+                [{ text: "View Progress", onPress: () => navigation.navigate('ReviewWorkout') }]
+            );
+        }
+    } catch (e) {
+        console.error("Final Save Error:", e);
+    } finally {
+        setSaving(false);
+    }
 };
 
   return (
@@ -254,9 +357,16 @@ const handleFinishExercise = async () => {
       textShadowRadius: 10 
     }}
   >
-    {viewMode ? 'PREVIEW' : 'ACTIVE'}
+    {viewMode ? 'PREVIEW' : (showSummary ? 'COMPLETE' : 'ACTIVE')}
   </Text>
-</Text>          <View style={{ width: 32 }} />
+</Text>          
+          {!viewMode && !showSummary ? (
+            <TouchableOpacity onPress={handleAbandon} style={styles.iconBtn}>
+                <Ionicons name="trash-outline" size={28} color="#ff453a" />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 32 }} />
+          )}
         </View>
 
         {!viewMode && (
@@ -275,7 +385,42 @@ const handleFinishExercise = async () => {
             </View>
         )}
 
-        {viewMode ? (
+        {showSummary ? (
+            <View style={[styles.card, { backgroundColor: theme.card, padding: 30 }]}>
+                <Ionicons name="trophy-outline" size={60} color={theme.success} style={{ alignSelf: 'center', marginBottom: 20 }} />
+                <Text style={[styles.exName, { color: theme.text, fontSize: 24, marginBottom: 10 }]}>Great Workout!</Text>
+                <Text style={{ color: theme.subtext, textAlign: 'center', marginBottom: 30 }}>You&apos;ve finished all exercises. Add any final notes for your records or your trainer.</Text>
+                
+                <View style={{ width: '100%' }}>
+                    <Text style={[styles.detailLabel, { color: theme.subtext, marginBottom: 8 }]}>FINAL COMMENTS</Text>
+                    <TextInput 
+                        style={{ 
+                            backgroundColor: theme.background, 
+                            color: theme.text, 
+                            padding: 15, 
+                            borderRadius: 12,
+                            height: 120,
+                            textAlignVertical: 'top'
+                        }}
+                        placeholder="Overall feedback..."
+                        placeholderTextColor={theme.subtext}
+                        multiline
+                        value={sessionNote}
+                        onChangeText={setSessionNote}
+                    />
+                </View>
+
+                <TouchableOpacity 
+                    style={[styles.mainBtn, { backgroundColor: theme.success, marginTop: 30, width: '100%' }]} 
+                    onPress={handleFinalSubmit}
+                    disabled={saving}
+                >
+                    {saving ? <ActivityIndicator color="#FFF" /> : (
+                        <Text style={styles.btnText}>SUBMIT WORKOUT</Text>
+                    )}
+                </TouchableOpacity>
+            </View>
+        ) : viewMode ? (
             <View style={{ padding: 20 }}>
                 {template.exercises.map((ex: any, idx: number) => (
                     <View key={idx} style={[styles.card, { backgroundColor: theme.card, marginBottom: 15, padding: 25 }]}>
@@ -320,7 +465,6 @@ const handleFinishExercise = async () => {
                     </>
                     )}
                 </View>
-
                 {isStarted && (
                     <View style={{ width: '100%', marginTop: 30 }}>
                         <View style={styles.timerContainer}>
@@ -346,27 +490,6 @@ const handleFinishExercise = async () => {
                                 onChangeText={setExerciseNote}
                             />
                         </View>
-
-                        {exerciseIndex + 1 === template.exercises.length && (
-                            <View style={{ marginTop: 20 }}>
-                                <Text style={[styles.detailLabel, { color: theme.subtext, marginBottom: 8 }]}>FINAL SESSION COMMENTS</Text>
-                                <TextInput 
-                                    style={{ 
-                                        backgroundColor: theme.background, 
-                                        color: theme.text, 
-                                        padding: 15, 
-                                        borderRadius: 12,
-                                        height: 100,
-                                        textAlignVertical: 'top'
-                                    }}
-                                    placeholder="Overall feedback for your trainer..."
-                                    placeholderTextColor={theme.subtext}
-                                    multiline
-                                    value={sessionNote}
-                                    onChangeText={setSessionNote}
-                                />
-                            </View>
-                        )}
                     </View>
                 )}
                 </View>
@@ -374,8 +497,8 @@ const handleFinishExercise = async () => {
                 <View style={styles.footer}>
                 {!isStarted ? (
                     <TouchableOpacity style={[styles.mainBtn, { backgroundColor: theme.accent }]} onPress={handleStartExercise}>
-                    <Ionicons name="play" size={24} color="#FFF" />
-                    <Text style={styles.btnText}>START EXERCISE</Text>
+                        <Ionicons name="play" size={24} color="#FFF" />
+                        <Text style={styles.btnText}>START EXERCISE</Text>
                     </TouchableOpacity>
                 ) : (
                     <TouchableOpacity 

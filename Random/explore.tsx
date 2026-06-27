@@ -1,3 +1,4 @@
+import React from 'react';
 import { StyleSheet, Text, View, useColorScheme } from 'react-native';
 
 export default function ExploreScreen() {

@@ -1,5 +1,5 @@
  eas build -p android --profile preview --clear-cache
- eas update --channel preview --message "Added swimming and card hiding"      
+ eas update --channel preview --message "Trainer and calorie estimation"      
 
  npx expo export -p web
  firebase deploy --only hosting
@@ -7,3 +7,27 @@
 
  firebase login:use email-for-this-project@gmail.com
  firebase login:list
+
+
+
+ // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDrCp2V427gGftHM_Nf3p1v5xcVKb7xJo4",
+  authDomain: "fittrack-act.firebaseapp.com",
+  projectId: "fittrack-act",
+  storageBucket: "fittrack-act.firebasestorage.app",
+  messagingSenderId: "786903260746",
+  appId: "1:786903260746:web:920b18d8db91dfe8a710b3",
+  measurementId: "G-4E41TFV637"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);

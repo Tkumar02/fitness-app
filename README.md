@@ -1,6 +1,45 @@
-# Welcome to your Expo app 👋
+# Fitness Tracker App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A comprehensive fitness application built with Expo and React Native, designed to help users plan, track, and visualize their fitness journey.
+
+## Key Features
+
+### 🔐 Authentication
+Secure user management to keep your progress private.
+*   **Sign Up**: Create a new account.
+*   **Login**: Secure access to your personal fitness data.
+*   **Profile Management**: Update your profile information and manage account settings.
+*   **Logout**: Safely sign out of the application.
+
+### 🏋️ Workout Planning & Management
+Build and manage your fitness routines.
+*   **Create Regimes**: Design custom workout routines tailored to your goals.
+*   **Template List**: Access and manage your saved workout templates.
+*   **Active Regime**: Easily track and follow your current workout routine.
+
+### 📈 Tracking & Progression
+Monitor your hard work and achievements.
+*   **Add Workouts**: Log your completed workouts.
+*   **Review Workouts**: View history and details of past sessions.
+*   **Progression Charts**: Visualize your strength and endurance improvements over time.
+*   **Goals**: Set, track, and achieve your fitness objectives.
+
+### 🌐 Community
+*   **Community Feed**: Stay motivated by connecting with other users, sharing progress, and viewing their activities.
+
+### 🛠 Tools
+*   **Exercise Customization**: Easily add new exercises to your workouts.
+*   **Calorie Calculator**: Utilize built-in utilities to estimate calorie expenditure for your activities.
+
+---
+
+## Technical Stack
+- **Framework**: Expo / React Native
+- **Language**: TypeScript
+- **State Management**: React Context (`UserContext`)
+- **Routing**: Expo Router (file-based)
+
+---
 
 ## Get started
 
@@ -15,36 +54,3 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    ```bash
    npx expo start
    ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.

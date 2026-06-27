@@ -191,7 +191,7 @@ export default function CreateRegime() {
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Ionicons 
-                  name={item.category === 'strength' ? 'barbell-outline' : 'pedometer-outline'} 
+                  name={item.category === 'strength' ? 'barbell-outline' : 'speedometer-outline'} 
                   size={16} 
                   color={item.category === 'strength' ? '#007AFF' : '#34C759'} 
                 />

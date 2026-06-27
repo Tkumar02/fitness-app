@@ -6,25 +6,31 @@ import React, { useContext, useEffect, useState } from "react";
 import {
     FlatList,
     RefreshControl,
-    ScrollView,
+    SafeAreaView,
     StyleSheet,
     Text,
     TouchableOpacity,
     useColorScheme,
     View
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+
+interface WorkoutSession {
+    id: string;
+    userId: string;
+    templateName?: string;
+    regimeName?: string;
+    endedAt?: any;
+    notes?: string;
+    exercises?: any[];
+    totalDurationSec?: number;
+    trainerId?: string;
+    status: string;
+}
 
 export default function CommunityFeed() {
     const { user } = useContext(UserContext);
     const isDark = useColorScheme() === 'dark';
     
-    const [loading, setLoading] = useState(true);
-    const [sessions, setSessions] = useState<any[]>([]);
-    const [clientBios, setClientBios] = useState<Record<string, any>>({});
-    const [refreshing, setRefreshing] = useState(false);
-    const [expandedSession, setExpandedSession] = useState<string | null>(null);
-
     const theme = {
         bg: isDark ? '#000' : '#f2f2f7',
         card: isDark ? '#1C1C1E' : '#fff',
@@ -33,7 +39,41 @@ export default function CommunityFeed() {
         accent: '#007AFF',
         success: '#34C759'
     };
+    
+    const [loading, setLoading] = useState(true);
+    const [sessions, setSessions] = useState<WorkoutSession[]>([]);
+    const [allClientBios, setAllClientBios] = useState<Record<string, any>>({});
+    const [refreshing, setRefreshing] = useState(false);
+    const [expandedSession, setExpandedSession] = useState<string | null>(null);
+    
+    // 1. Fetch all linked clients and their bio info
+    useEffect(() => {
+        if (user?.role !== 'trainer' || !user.uid) return;
 
+        const qClients = query(collection(db, 'users'), where('trainerId', '==', user.uid));
+        
+        return onSnapshot(qClients, async (snap) => {
+            const bios: Record<string, any> = {};
+            for (const docSnap of snap.docs) {
+                const uData = docSnap.data();
+                const goalSnap = await getDoc(doc(db, 'users', docSnap.id, 'settings', 'goals'));
+                const goals = goalSnap.exists() ? goalSnap.data() : {};
+
+                bios[docSnap.id] = {
+                    weight: uData.weight,
+                    height: uData.height,
+                    dob: uData.dob,
+                    aspirations: uData.aspirations,
+                    shareBio: uData.shareBio,
+                    goals: goals,
+                    name: uData.name || uData.username
+                };
+            }
+            setAllClientBios(bios);
+        });
+    }, [user]);
+
+    // 2. Fetch workout sessions
     useEffect(() => {
         if (!user?.uid) return;
 
@@ -54,36 +94,12 @@ export default function CommunityFeed() {
             );
         }
 
-        const unsubscribe = onSnapshot(q, async (snapshot) => {
-            const data = snapshot.docs.map(doc => ({
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const data: WorkoutSession[] = snapshot.docs.map(doc => ({
                 id: doc.id,
-                ...doc.data()
+                ...doc.data() as Omit<WorkoutSession, 'id'>
             }));
             setSessions(data);
-
-            // Fetch bio data for clients if trainer
-            if (user.role === 'trainer') {
-                const uniqueUserIds = Array.from(new Set(data.map(s => s.userId)));
-                const bios: Record<string, any> = {};
-                for (const uid of uniqueUserIds) {
-                    if (uid) {
-                        const uDoc = await getDoc(doc(db, 'users', uid));
-                        if (uDoc.exists()) {
-                            const uData = uDoc.data();
-                            if (uData.shareBio) {
-                                bios[uid] = {
-                                    weight: uData.weight,
-                                    height: uData.height,
-                                    dob: uData.dob,
-                                    name: uData.name || uData.username
-                                };
-                            }
-                        }
-                    }
-                }
-                setClientBios(bios);
-            }
-
             setLoading(false);
             setRefreshing(false);
         }, (error) => {
@@ -93,6 +109,12 @@ export default function CommunityFeed() {
 
         return () => unsubscribe();
     }, [user]);
+
+    const formatDuration = (seconds: number) => {
+        if (!seconds) return '0m';
+        const mins = Math.floor(seconds / 60);
+        return `${mins}m`;
+    };
 
     const calculateAge = (dob: string) => {
         if (!dob) return null;
@@ -104,10 +126,10 @@ export default function CommunityFeed() {
         return age;
     };
 
-    const renderItem = ({ item }: { item: any }) => {
+    const renderItem = ({ item }: { item: WorkoutSession }) => {
         const isExpanded = expandedSession === item.id;
         const endedAt = item.endedAt?.toDate ? item.endedAt.toDate() : new Date(item.endedAt);
-        const bio = clientBios[item.userId];
+        const bio = item.userId ? allClientBios[item.userId] : null;
 
         return (
             <View style={[styles.card, { backgroundColor: theme.card }]}>
@@ -126,10 +148,31 @@ export default function CommunityFeed() {
                 </View>
 
                 {user?.role === 'trainer' && bio && (
-                    <View style={styles.bioRow}>
-                        <View style={styles.bioItem}><Text style={styles.bioLabel}>WT</Text><Text style={[styles.bioValue, { color: theme.text }]}>{bio.weight}kg</Text></View>
-                        <View style={styles.bioItem}><Text style={styles.bioLabel}>HT</Text><Text style={[styles.bioValue, { color: theme.text }]}>{bio.height}cm</Text></View>
-                        <View style={styles.bioItem}><Text style={styles.bioLabel}>AGE</Text><Text style={[styles.bioValue, { color: theme.text }]}>{calculateAge(bio.dob)}</Text></View>
+                    <View style={{ marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: theme.text, marginBottom: 8 }}>{bio.name}</Text>
+                        
+                        {/* Always show aspirations if present */}
+                        {bio.aspirations && (
+                            <View style={{ marginBottom: 10, padding: 10, backgroundColor: isDark ? '#2c2c2e' : '#f9f9f9', borderRadius: 8 }}>
+                                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.accent, marginBottom: 4 }}>ASPIRATIONS</Text>
+                                <Text style={{ fontSize: 12, color: theme.text, fontStyle: 'italic' }}>&quot;{bio.aspirations}&quot;</Text>
+                            </View>
+                        )}
+
+                        {/* Conditionally show Bio Metrics */}
+                        {bio.shareBio && (
+                            <View style={styles.bioRow}>
+                                <View style={styles.bioItem}><Text style={styles.bioLabel}>WT</Text><Text style={[styles.bioValue, { color: theme.text }]}>{bio.weight}kg</Text></View>
+                                <View style={styles.bioItem}><Text style={styles.bioLabel}>HT</Text><Text style={[styles.bioValue, { color: theme.text }]}>{bio.height}cm</Text></View>
+                                <View style={styles.bioItem}><Text style={styles.bioLabel}>AGE</Text><Text style={[styles.bioValue, { color: theme.text }]}>{calculateAge(bio.dob)}</Text></View>
+                            </View>
+                        )}
+                        
+                        {bio.goals && (bio.goals.strengthTarget || bio.goals.cardioTarget) && (
+                            <View style={{ flexDirection: 'row', gap: 10 }}>
+                                <Text style={{ fontSize: 11, color: theme.subtext }}>WEEKLY GOALS: {bio.goals.strengthTarget || 0}S / {bio.goals.cardioTarget || 0}C</Text>
+                            </View>
+                        )}
                     </View>
                 )}
 
@@ -178,6 +221,29 @@ export default function CommunityFeed() {
                 <Text style={[styles.header, { color: theme.text }]}>
                     {user?.role === 'trainer' ? 'Client Progress' : 'Recent Workouts'}
                 </Text>
+
+                {user?.role === 'trainer' && (
+                    <View style={styles.clientSection}>
+                        <Text style={[styles.sectionTitle, { color: theme.subtext }]}>MY CLIENTS ({Object.keys(allClientBios).length})</Text>
+                        <FlatList
+                            data={Object.entries(allClientBios)}
+                            keyExtractor={(item) => item[0]}
+                            horizontal
+                            renderItem={({ item }) => {
+                                const [uid, bio] = item;
+                                return (
+                                    <View style={[styles.clientCard, { backgroundColor: theme.card }]}>
+                                        <Text style={{ fontWeight: '800', color: theme.text }}>{bio.name}</Text>
+                                        <Text style={{ fontSize: 11, color: theme.subtext }}>{bio.weight}kg / {bio.height}cm / {calculateAge(bio.dob)}yo</Text>
+                                        {bio.aspirations && (
+                                            <Text style={{ fontSize: 11, color: theme.accent, marginTop: 4, fontStyle: 'italic' }}>{bio.aspirations.substring(0, 30)}...</Text>
+                                        )}
+                                    </View>
+                                )
+                            }}
+                        />
+                    </View>
+                )}
                 
                 <FlatList
                     data={sessions}
@@ -200,6 +266,9 @@ export default function CommunityFeed() {
 const styles = StyleSheet.create({
     container: { flex: 1, padding: 20 },
     header: { fontSize: 32, fontWeight: '900', marginBottom: 20 },
+    clientSection: { marginBottom: 20, marginTop: 10 },
+    sectionTitle: { fontSize: 12, fontWeight: '800', marginBottom: 10, letterSpacing: 0.5 },
+    clientCard: { padding: 15, borderRadius: 15, marginRight: 10, width: 150, elevation: 2, shadowOpacity: 0.05, shadowRadius: 5 },
     card: { padding: 20, borderRadius: 20, marginBottom: 15, elevation: 2, shadowOpacity: 0.05, shadowRadius: 10 },
     cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
     regimeName: { fontSize: 18, fontWeight: '800' },

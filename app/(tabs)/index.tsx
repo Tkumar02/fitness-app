@@ -19,10 +19,19 @@ import {
 // Note: Path assumes context is in the root directory, outside of 'app'
 import { UserContext } from '../../context/UserContext';
 
+interface WorkoutSession {
+    id: string;
+    templateId?: string;
+    template?: any;
+    userId: string;
+    status: string;
+}
+
 export default function HomePage() {
-    const { user, setUser } = useContext(UserContext);
+    const { user } = useContext(UserContext);
     const router = useRouter();
     const isDark = useColorScheme() === 'dark';
+    const [activeSession, setActiveSession] = useState<WorkoutSession | null>(null);
 
     // Theme values
     const theme = {
@@ -49,7 +58,6 @@ export default function HomePage() {
         timeCurrent: 0,
         timeTarget: 0
     });
-    const [hasActiveSession, setHasActiveSession] = useState(false);
 
     // Helper to safely parse dates in multiple formats
     const parseDate = (dateStr: string) => {
@@ -74,8 +82,32 @@ export default function HomePage() {
             where('userId', '==', user.uid),
             where('status', '==', 'active')
         );
-        const unsubSession = onSnapshot(qSession, (snap) => {
-            setHasActiveSession(!snap.empty);
+        const unsubSession = onSnapshot(qSession, async (snap) => {
+            if (snap.empty) {
+                setActiveSession(null);
+                return;
+            }
+            
+            const activeDoc = snap.docs[0];
+            const sessionData = activeDoc.data();
+            const session: WorkoutSession = {
+                id: activeDoc.id,
+                userId: sessionData.userId,
+                status: sessionData.status,
+                templateId: sessionData.templateId,
+                template: sessionData.template
+            };
+
+            if (session.templateId) {
+                const tDoc = await getDoc(doc(db, 'templates', session.templateId));
+                if (tDoc.exists()) {
+                    setActiveSession({ ...session, template: { id: tDoc.id, ...tDoc.data() } });
+                } else {
+                    setActiveSession(null);
+                }
+            } else {
+                setActiveSession(session);
+            }
         });
 
         const fetchData = async () => {
@@ -227,7 +259,6 @@ export default function HomePage() {
                                 </View>
                             </View>
 
-                            <View style={styles.menu}>
                                 {user?.role === 'trainer' ? (
                                     <>
                                         <MenuButton 
@@ -252,17 +283,28 @@ export default function HomePage() {
                                 ) : (
                                     <>
                                         <MenuButton 
-                                            title={hasActiveSession ? "Resume Workout" : "Log Workout"} 
+                                            title={activeSession ? "Resume Workout" : "Log Workout"} 
                                             emoji="🏋️" 
-                                            color={hasActiveSession ? theme.success : theme.accent} 
-                                            onPress={() => router.push(hasActiveSession ? '/(tabs)/TemplateList' : '/(tabs)/AddWorkout')}
-                                            badge={hasActiveSession ? "RESUME" : null}
+                                            color={activeSession ? theme.success : theme.accent} 
+                                            onPress={() => {
+                                                if (activeSession) {
+                                                    router.push({
+                                                        pathname: '/(tabs)/ActiveRegime',
+                                                        params: { 
+                                                            sessionId: activeSession.id,
+                                                            template: JSON.stringify(activeSession.template)
+                                                        }
+                                                    });
+                                                } else {
+                                                    router.push('/(tabs)/AddWorkout');
+                                                }
+                                            }}
+                                            badge={activeSession ? "RESUME" : null}
                                         />
                                         <MenuButton title="Progression" emoji="📊" color="#5856D6" onPress={() => router.push('/(tabs)/ReviewWorkout')} />
                                         <MenuButton title="My Goals" emoji="🎯" color={theme.success} onPress={() => router.push('/(tabs)/Goals')} />
                                     </>
                                 )}
-                            </View>
 
                             <TouchableOpacity onPress={handleSignOut} style={styles.logout}>
                                 <Text style={{ color: '#FF3B30', fontWeight: 'bold', fontSize: 16 }}>Sign Out</Text>

@@ -185,8 +185,9 @@ export default function AddExerciseModal({ visible, onClose, onAdd, customList, 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
             {searchQuery.length > 0 && !listToDisplay.find(e => e.name.toLowerCase() === searchQuery.toLowerCase()) && (
               <TouchableOpacity style={[styles.chip, { backgroundColor: theme.accent }]} onPress={handleCreateCustom}>
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ Create "{searchQuery}"</Text>
+              <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ Create &quot;{searchQuery}&quot;</Text>
               </TouchableOpacity>
+
             )}
             {listToDisplay.map((ex) => (
               <TouchableOpacity

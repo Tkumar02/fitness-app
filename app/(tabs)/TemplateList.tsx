@@ -59,8 +59,23 @@ export default function TemplateList() {
             where('sharedWith', 'array-contains', user.uid)
         );
 
+interface Regime {
+    id: string;
+    userId: string;
+    name: string;
+    exercises?: any[];
+    sharedWith?: string[];
+    createdAt?: any;
+    creatorName?: string;
+    description?: string;
+}
+
+// ... inside useEffect ...
         const unsubOwn = onSnapshot(qOwn, async (snapOwn) => {
-            const ownTemplates = snapOwn.docs.map(d => ({ id: d.id, ...d.data() }));
+            const ownTemplates: Regime[] = snapOwn.docs.map(d => ({ 
+                id: d.id, 
+                ...d.data() as Omit<Regime, 'id'> 
+            }));
             
             // If trainer, fetch names for sharedWith IDs
             if (user.role === 'trainer') {
@@ -158,7 +173,7 @@ export default function TemplateList() {
   const startRegime = async (template: any) => {
     if (activeSession?.templateId === template.id) {
         navigation.navigate('ActiveRegime', {
-            template,
+            template: JSON.stringify(template),
             sessionId: activeSession.id
         });
         return;
@@ -193,23 +208,37 @@ export default function TemplateList() {
 
     navigation.navigate('ActiveRegime', {
       sessionId: sessionRef.id,
-      template
+      template: JSON.stringify(template)
     });
   };
 
 // ================================
-  // DELETE (Fixed path to match your fetch query)
-  // ================================
-  const deleteTemplate = async (id: string) => {
-    const doDelete = async () => {
-      try {
-        // Updated path to top-level collection to match your onSnapshot query
-        await deleteDoc(doc(db, 'templates', id));
-      } catch (err) {
-        console.error("Delete failed: ", err);
+// DELETE (Fixed path to match your fetch query)
+// ================================
+const deleteTemplate = async (id: string) => {
+  const doDelete = async () => {
+    try {
+      // 1. Clear any active sessions for THIS specific template
+      const qActive = query(
+          collection(db, 'workoutSessions'),
+          where('userId', '==', user!.uid),
+          where('templateId', '==', id),
+          where('status', '==', 'active')
+      );
+      const activeSnaps = await getDocs(qActive);
+      for (const sDoc of activeSnaps.docs) {
+          await updateDoc(doc(db, 'workoutSessions', sDoc.id), { 
+              status: 'abandoned', 
+              endedAt: serverTimestamp() 
+          });
       }
-    };
 
+      // 2. Delete the template
+      await deleteDoc(doc(db, 'templates', id));
+    } catch (err) {
+      console.error("Delete failed: ", err);
+    }
+  };
     if (Platform.OS === 'web') {
       if (window.confirm('Delete template?')) doDelete();
     } else {
